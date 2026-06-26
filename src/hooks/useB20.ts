@@ -1,4 +1,5 @@
-import { useReadContract, useReadContracts, useWriteContract, useWaitForTransactionReceipt } from 'wagmi';
+import { useReadContract, useReadContracts, useWriteContract, useWaitForTransactionReceipt, useAccount, usePublicClient } from 'wagmi';
+import { useState } from 'react';
 import { B20_FACTORY_ADDRESS, B20_FACTORY_ABI, B20_TOKEN_ABI, DEFAULT_ADMIN_ROLE, MINT_ROLE, BURN_ROLE, PAUSE_ROLE, UNPAUSE_ROLE, METADATA_ROLE, OPERATOR_ROLE } from '../lib/b20Abi';
 import { B20Variant, NetworkType } from '../types';
 import { parseEventLogs, zeroAddress } from 'viem';
@@ -172,15 +173,43 @@ export function useB20Details(tokenAddress?: `0x${string}`, userAddress?: `0x${s
  * Hook to write transactions directly to a B20 Token
  */
 export function useB20TokenActions(tokenAddress: `0x${string}`) {
-  const { writeContractAsync, data: hash, error, isPending } = useWriteContract();
+  const { writeContractAsync, data: hash, error: writeError, isPending: isWritePending } = useWriteContract();
+  const publicClient = usePublicClient();
+  const { address: userAddress } = useAccount();
+
+  const [isSimulating, setIsSimulating] = useState(false);
+  const [localError, setLocalError] = useState<Error | null>(null);
 
   const writeAction = async (functionName: string, args: any[]) => {
-    return writeContractAsync({
-      address: tokenAddress,
-      abi: B20_TOKEN_ABI,
-      functionName: functionName as any,
-      args: args as any
-    });
+    setLocalError(null);
+    setIsSimulating(true);
+
+    try {
+      if (!publicClient) {
+        throw new Error("RPC client is not available. Please verify network connection.");
+      }
+      if (!userAddress) {
+        throw new Error("Wallet is not connected. Please connect your wallet.");
+      }
+
+      // 1. Simulate contract call
+      const { request } = await publicClient.simulateContract({
+        address: tokenAddress,
+        abi: B20_TOKEN_ABI,
+        functionName: functionName as any,
+        args: args as any,
+        account: userAddress
+      });
+
+      // 2. Write contract using simulated request
+      return await writeContractAsync(request);
+    } catch (err: any) {
+      console.error(`Simulation/execution failed for ${functionName}:`, err);
+      setLocalError(err);
+      throw err;
+    } finally {
+      setIsSimulating(false);
+    }
   };
 
   return {
@@ -193,7 +222,7 @@ export function useB20TokenActions(tokenAddress: `0x${string}`) {
     renounceLastAdmin: async () => writeAction('renounceLastAdmin', []),
     updateSupplyCap: async (newCap: bigint) => writeAction('updateSupplyCap', [newCap]),
     txHash: hash,
-    error,
-    isPending
+    error: localError || writeError,
+    isPending: isSimulating || isWritePending
   };
 }
