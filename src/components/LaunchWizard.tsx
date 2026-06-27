@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { useAccount, useChainId, useWaitForTransactionReceipt, useReadContract, useSimulateContract, useWriteContract, usePublicClient } from 'wagmi';
+import { useAccount, useChainId, useWaitForTransactionReceipt, useReadContract, useSimulateContract, useWriteContract, usePublicClient, useBalance } from 'wagmi';
 import { base, baseSepolia } from 'wagmi/chains';
 import { parseUnits, keccak256, toHex, zeroAddress, parseEventLogs, isAddress, encodeFunctionData } from 'viem';
 import { 
@@ -86,6 +86,22 @@ export default function LaunchWizard() {
   const [showTechDetails, setShowTechDetails] = useState(false);
   const [rpcStatus, setRpcStatus] = useState<'Healthy' | 'Unavailable' | 'Pending'>('Pending');
   const [factoryStatus, setFactoryStatus] = useState<'Reachable' | 'Unavailable' | 'Pending'>('Pending');
+
+  const { data: balanceData } = useBalance({ address: userAddress });
+
+  const isB20Enabled = process.env.NEXT_PUBLIC_B20_ENABLED === 'true';
+  const isWalletConnected = isConnected;
+  const isBaseMainnet = chainId === base.id;
+  const isEthBalanceAvailable = !!balanceData && balanceData.value > 0n;
+  const isParamsValid = !!name && !!symbol && (
+    tokenType === 'meme' ? (!!initialSupply && parseFloat(initialSupply) >= 0) :
+    tokenType === 'stable' ? (!!currencyCode && !!initialSupply && parseFloat(initialSupply) >= 0) :
+    tokenType === 'security' ? (!!supplyCap && parseFloat(supplyCap) >= 0 && !!initialSupply && parseFloat(initialSupply) >= 0) : false
+  ) && encodedParams !== '0x';
+  const isSimulationPassed = !!simulateResult;
+
+  const allOtherItemsValid = isWalletConnected && isBaseMainnet && isEthBalanceAvailable && isParamsValid && isSimulationPassed;
+  const canDeploy = isB20Enabled && allOtherItemsValid;
 
   useEffect(() => {
     let active = true;
@@ -1261,6 +1277,53 @@ export default function LaunchWizard() {
             </div>
           )}
 
+          {/* Production Readiness Checklist */}
+          <div className="bg-slate-50 border border-slate-200/80 rounded-xl p-5 space-y-3.5 text-left">
+            <h4 className="text-xs font-bold uppercase tracking-wider text-slate-900 flex items-center gap-1.5">
+              <ShieldCheck className="size-4 text-blue-600" /> Production Readiness Checklist
+            </h4>
+            
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+              <div className="flex items-center gap-2">
+                <span>{isWalletConnected ? '✅' : '❌'}</span>
+                <span className={isWalletConnected ? 'text-slate-700 font-semibold' : 'text-slate-400'}>Wallet Connected</span>
+              </div>
+              
+              <div className="flex items-center gap-2">
+                <span>{isBaseMainnet ? '✅' : '❌'}</span>
+                <span className={isBaseMainnet ? 'text-slate-700 font-semibold' : 'text-slate-400'}>Base Mainnet</span>
+              </div>
+              
+              <div className="flex items-center gap-2">
+                <span>{isEthBalanceAvailable ? '✅' : '❌'}</span>
+                <span className={isEthBalanceAvailable ? 'text-slate-700 font-semibold' : 'text-slate-400'}>ETH Balance Available</span>
+              </div>
+              
+              <div className="flex items-center gap-2">
+                <span>{isParamsValid ? '✅' : '❌'}</span>
+                <span className={isParamsValid ? 'text-slate-700 font-semibold' : 'text-slate-400'}>Parameters Valid</span>
+              </div>
+              
+              <div className="flex items-center gap-2">
+                <span>{isSimulationPassed ? '✅' : '❌'}</span>
+                <span className={isSimulationPassed ? 'text-slate-700 font-semibold' : 'text-slate-400'}>Simulation Passed</span>
+              </div>
+              
+              <div className="flex items-center gap-2">
+                <span>{isB20Enabled ? '✅' : '🟡'}</span>
+                <span className={isB20Enabled ? 'text-slate-700 font-semibold' : 'text-amber-600 font-semibold animate-pulse'}>
+                  {isB20Enabled ? 'B20 Activation Enabled' : 'B20 Activation Pending'}
+                </span>
+              </div>
+            </div>
+
+            {!isB20Enabled && (
+              <div className="mt-2 text-[11px] text-amber-600 bg-amber-50 border border-amber-100 rounded-lg p-2.5 font-medium">
+                Waiting for official Base B20 activation.
+              </div>
+            )}
+          </div>
+
           {/* Action buttons */}
           <div className="flex items-center justify-between border-t border-slate-100 pt-4">
             <button
@@ -1271,7 +1334,7 @@ export default function LaunchWizard() {
             </button>
             <button
               onClick={handleDeploy}
-              disabled={isDeploying || (currentNetwork === 'mainnet' && !acknowledgedMainnet)}
+              disabled={isDeploying || (currentNetwork === 'mainnet' && !acknowledgedMainnet) || !canDeploy}
               className="flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold py-2.5 px-6 rounded-xl transition disabled:opacity-50 disabled:cursor-not-allowed shadow-md shadow-blue-500/10"
             >
               {isDeploying ? (
