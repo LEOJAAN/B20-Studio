@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAccount, useChainId, useWaitForTransactionReceipt, useReadContract, useSimulateContract, useWriteContract, usePublicClient } from 'wagmi';
 import { base, baseSepolia } from 'wagmi/chains';
-import { parseUnits, keccak256, toHex, zeroAddress, parseEventLogs, isAddress } from 'viem';
+import { parseUnits, keccak256, toHex, zeroAddress, parseEventLogs, isAddress, encodeFunctionData } from 'viem';
 import { 
   Coins, Building2, ShieldAlert, Globe, X as TwitterIcon, Send, 
   FileText, CheckCircle2, Loader2, ChevronRight, ChevronLeft, 
@@ -79,7 +79,127 @@ export default function LaunchWizard() {
     }
   });
 
-  const { writeContractAsync, error: deployError, isPending: isDeploying } = useWriteContract();
+  const { writeContractAsync, error: deployError, isPending: isDeploying, reset: resetDeploy } = useWriteContract();
+
+  // Custom status and error states
+  const [localDeployError, setLocalDeployError] = useState<any | null>(null);
+  const [showTechDetails, setShowTechDetails] = useState(false);
+  const [rpcStatus, setRpcStatus] = useState<'Healthy' | 'Unavailable' | 'Pending'>('Pending');
+  const [factoryStatus, setFactoryStatus] = useState<'Reachable' | 'Unavailable' | 'Pending'>('Pending');
+
+  useEffect(() => {
+    let active = true;
+    
+    const checkStatus = async () => {
+      if (!publicClient) {
+        if (active) {
+          setRpcStatus('Unavailable');
+          setFactoryStatus('Unavailable');
+        }
+        return;
+      }
+
+      try {
+        // Test RPC health
+        await publicClient.getBlockNumber();
+        if (active) setRpcStatus('Healthy');
+
+        // Test Factory contract reachability
+        try {
+          // Calling isB20(address) with zeroAddress is a safe read-only call
+          await publicClient.readContract({
+            address: B20_FACTORY_ADDRESS,
+            abi: B20_FACTORY_ABI,
+            functionName: 'isB20',
+            args: [zeroAddress]
+          });
+          if (active) setFactoryStatus('Reachable');
+        } catch (contractErr) {
+          console.warn('B20 Factory contract is not reachable:', contractErr);
+          if (active) setFactoryStatus('Unavailable');
+        }
+      } catch (rpcErr) {
+        console.error('RPC connection test failed:', rpcErr);
+        if (active) {
+          setRpcStatus('Unavailable');
+          setFactoryStatus('Unavailable');
+        }
+      }
+    };
+
+    setRpcStatus('Pending');
+    setFactoryStatus('Pending');
+    checkStatus();
+
+    // Check again every 10 seconds to keep it updated in real-time
+    const interval = setInterval(checkStatus, 10000);
+
+    return () => {
+      active = false;
+      clearInterval(interval);
+    };
+  }, [publicClient]);
+
+  // Helper to extract technical error details
+  const getErrorDetails = () => {
+    const activeErr = localDeployError || deployError;
+    if (!activeErr) return { revertSignature: 'None', rawError: 'None', calldata: 'None', txHash: undefined };
+
+    let revertSignature = 'Unknown / None';
+    let rawError = activeErr?.message || String(activeErr);
+    
+    // Parse signature / reason from error object or raw text
+    if (activeErr && typeof activeErr.walk === 'function') {
+      const walked = activeErr.walk();
+      if (walked) {
+        if (walked.signature) {
+          revertSignature = walked.signature;
+        } else if (walked.data) {
+          revertSignature = walked.data;
+        }
+        if (walked.message) {
+          rawError = walked.message;
+        }
+      }
+    }
+
+    // Try regex matching in message string as fallback
+    if (revertSignature === 'Unknown / None' && activeErr?.message) {
+      const reasonMatch = activeErr.message.match(/reverted with reason:\s*(.+)/i) ||
+                          activeErr.message.match(/revert:\s*(.+)/i) ||
+                          activeErr.message.match(/reverted with the following reason:\s*(.+)/i);
+      if (reasonMatch) {
+        revertSignature = reasonMatch[1] || reasonMatch[0];
+      }
+    }
+
+    // Generate/fetch calldata
+    let calldata = '0x';
+    try {
+      calldata = encodeFunctionData({
+        abi: B20_FACTORY_ABI,
+        functionName: 'createB20',
+        args: [
+          tokenType === 'stable' ? B20Variant.STABLECOIN : B20Variant.ASSET,
+          salt,
+          encodedParams,
+          encodedInitCalls
+        ]
+      });
+    } catch (err: any) {
+      console.error('Failed to encode calldata for display:', err);
+      calldata = 'Error encoding calldata: ' + (err?.message || err);
+    }
+
+    return {
+      revertSignature,
+      rawError,
+      calldata,
+      txHash: deployTxHash
+    };
+  };
+
+  const errorDetails = getErrorDetails();
 
   const { 
     data: receipt, 
@@ -90,6 +210,45 @@ export default function LaunchWizard() {
   } = useWaitForTransactionReceipt({
     hash: deployTxHash
   });
+
+  // Save debug snapshot to localStorage for Developer Debug Panel
+  useEffect(() => {
+    try {
+      const debugSnapshot = {
+        salt,
+        encodedParams,
+        encodedInitCalls,
+        simulationResult: simulateResult ? {
+          request: simulateResult.request ? 'ready' : 'null',
+          result: simulateResult.result
+        } : null,
+        gasEstimate: simulateResult?.request?.gas ? simulateResult.request.gas.toString() : 'None',
+        deployTxHash,
+        receiptStatus: receipt?.status,
+        decodedLogs: receipt ? parseEventLogs({
+          abi: B20_FACTORY_ABI,
+          eventName: 'B20Created',
+          logs: receipt.logs
+        }).map(l => ({
+          eventName: l.eventName,
+          args: {
+            token: l.args.token,
+            name: l.args.name,
+            symbol: l.args.symbol,
+            decimals: l.args.decimals
+          }
+        })) : null,
+        currentStep: step,
+        recentErrors: localDeployError?.message || deployError?.message || simulateError?.message || null,
+        rawRevertData: localDeployError ? String(localDeployError) : deployError ? String(deployError) : null,
+        recentSimulationData: simulateResult ? JSON.stringify(simulateResult.result) : null,
+        timestamp: Date.now()
+      };
+      localStorage.setItem('b20_debug_snapshot', JSON.stringify(debugSnapshot));
+    } catch (err) {
+      console.warn('Failed to save debug snapshot:', err);
+    }
+  }, [salt, encodedParams, encodedInitCalls, simulateResult, deployTxHash, receipt, step, localDeployError, deployError, simulateError]);
 
   useEffect(() => {
     if (!userAddress) return;
@@ -207,6 +366,8 @@ export default function LaunchWizard() {
 
   // Submit Deploy transaction
   const handleDeploy = async () => {
+    setLocalDeployError(null);
+    setShowTechDetails(false);
     if (chainId === base.id && !acknowledgedMainnet) {
       alert("Please acknowledge that you are deploying on Base Mainnet using real funds.");
       return;
@@ -278,7 +439,8 @@ export default function LaunchWizard() {
       }
     } catch (e: any) {
       console.error('Deployment simulation/execution failed', e);
-      alert(`Deployment failed: ${e.message || e}`);
+      setLocalDeployError(e);
+      setStep(4);
     }
   };
 
@@ -460,7 +622,7 @@ export default function LaunchWizard() {
         }
       } else if (receipt.status === 'reverted') {
         console.error("Transaction reverted!");
-        alert("The deployment transaction reverted on-chain. Please check your setup parameters and try again.");
+        setLocalDeployError(new Error("The deployment transaction reverted on-chain. Please check your setup parameters and try again."));
       }
     }
   }, [receipt, simulatedDeployedAddress, deployTxHash]);
@@ -478,6 +640,70 @@ export default function LaunchWizard() {
 
   return (
     <div className="w-full max-w-5xl mx-auto px-4 py-8">
+      {/* Network Status Card */}
+      <div className="bg-white border border-slate-200/80 rounded-2xl p-6 shadow-sm mb-8">
+        <div className="flex items-center gap-2 mb-4">
+          <div className="p-1.5 rounded-lg bg-blue-50 text-blue-600">
+            <Globe className="size-4" />
+          </div>
+          <div>
+            <h3 className="text-sm font-bold text-slate-800">Network Status</h3>
+            <p className="text-[11px] text-slate-400">Real-time status of B20 precompile node integration</p>
+          </div>
+        </div>
+        
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-4">
+          <div className="p-3 bg-slate-50/50 border border-slate-100 rounded-xl">
+            <span className="block text-[10px] text-slate-400 font-bold uppercase tracking-wider font-semibold">Network</span>
+            <span className="block text-xs font-bold text-slate-700 mt-1">
+              {chainId === base.id ? 'Base Mainnet' : chainId === baseSepolia.id ? 'Base Sepolia' : 'Unknown Network'}
+            </span>
+          </div>
+          
+          <div className="p-3 bg-slate-50/50 border border-slate-100 rounded-xl">
+            <span className="block text-[10px] text-slate-400 font-bold uppercase tracking-wider font-semibold">Factory Contract</span>
+            <span className={`inline-flex items-center gap-1.5 text-xs font-bold mt-1 ${
+              factoryStatus === 'Reachable' ? 'text-emerald-600' : factoryStatus === 'Pending' ? 'text-amber-600' : 'text-rose-600'
+            }`}>
+              <span className={`size-1.5 rounded-full ${
+                factoryStatus === 'Reachable' ? 'bg-emerald-500 animate-pulse' : factoryStatus === 'Pending' ? 'bg-amber-500 animate-pulse' : 'bg-rose-500'
+              }`} />
+              {factoryStatus}
+            </span>
+          </div>
+          
+          <div className="p-3 bg-slate-50/50 border border-slate-100 rounded-xl">
+            <span className="block text-[10px] text-slate-400 font-bold uppercase tracking-wider font-semibold">Wallet</span>
+            <span className={`inline-flex items-center gap-1.5 text-xs font-bold mt-1 ${isConnected ? 'text-emerald-600' : 'text-rose-600'}`}>
+              <span className={`size-1.5 rounded-full ${isConnected ? 'bg-emerald-500' : 'bg-rose-500'}`} />
+              {isConnected ? 'Connected' : 'Not Connected'}
+            </span>
+          </div>
+          
+          <div className="p-3 bg-slate-50/50 border border-slate-100 rounded-xl">
+            <span className="block text-[10px] text-slate-400 font-bold uppercase tracking-wider font-semibold">RPC Status</span>
+            <span className={`inline-flex items-center gap-1.5 text-xs font-bold mt-1 ${
+              rpcStatus === 'Healthy' ? 'text-emerald-600' : rpcStatus === 'Pending' ? 'text-amber-600' : 'text-rose-600'
+            }`}>
+              <span className={`size-1.5 rounded-full ${
+                rpcStatus === 'Healthy' ? 'bg-emerald-500 animate-pulse' : rpcStatus === 'Pending' ? 'bg-amber-500 animate-pulse' : 'bg-rose-500'
+              }`} />
+              {rpcStatus}
+            </span>
+          </div>
+          
+          <div className="p-3 bg-slate-50/50 border border-slate-100 rounded-xl flex flex-col justify-between">
+            <span className="block text-[10px] text-slate-400 font-bold uppercase tracking-wider font-semibold">B20 Activation</span>
+            <div className="mt-1 flex flex-col gap-1 items-start">
+              <span className="text-[10px] text-slate-500 font-semibold">Waiting for Official Activation</span>
+              <span className="inline-flex items-center text-[9px] sm:text-[10px] font-bold px-2 py-0.5 rounded bg-amber-50 border border-amber-200 text-amber-700 animate-pulse select-none mt-0.5">
+                Waiting for Base B20 Activation
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>
+
       {/* Step Indicators */}
       <div className="mb-10 max-w-xl mx-auto">
         <div className="flex items-center justify-between">
@@ -1101,18 +1327,71 @@ export default function LaunchWizard() {
             </div>
           )}
 
-          {deployError && (
-            <div className="text-xs bg-rose-50 border border-rose-200 text-rose-600 rounded-xl p-4 text-left">
-              <p className="font-bold">Transaction Failed</p>
-              <p className="mt-1">{deployError.message.substring(0, 150)}...</p>
-              <button
-                onClick={() => setStep(3)}
-                className="mt-3 bg-white text-rose-600 border border-rose-200 font-bold py-1 px-3 rounded text-[11px]"
-              >
-                Go Back & Retry
-              </button>
-            </div>
-          )}
+          {(deployError || localDeployError) && (() => {
+            const activeErr = localDeployError || deployError;
+            const isUserRejection = activeErr?.message?.toLowerCase().includes('user rejected') ||
+                                    activeErr?.message?.toLowerCase().includes('user denied') ||
+                                    activeErr?.code === 4001;
+            
+            const errorTitle = isUserRejection ? "Transaction Rejected" : "Deployment unavailable";
+            const errorDescription = isUserRejection 
+              ? "The transaction was rejected in your wallet. Please try again." 
+              : "The Base B20 deployment endpoint is currently unavailable. This usually means the B20 activation has not yet been enabled on Base Mainnet. Please wait for the official announcement and try again.";
+            
+            return (
+              <div className="text-xs bg-rose-50 border border-rose-200 text-rose-600 rounded-xl p-5 text-left space-y-3">
+                <p className="font-bold text-sm text-rose-800">{errorTitle}</p>
+                <p className="mt-1 text-rose-700 leading-relaxed">{errorDescription}</p>
+                
+                {/* Show Technical Details Accordion */}
+                <div className="mt-3 border-t border-rose-200/50 pt-2.5">
+                  <button
+                    type="button"
+                    onClick={() => setShowTechDetails(!showTechDetails)}
+                    className="flex items-center gap-1 font-bold text-[11px] text-rose-700 hover:text-rose-900 transition outline-none cursor-pointer"
+                  >
+                    <span>{showTechDetails ? '▼' : '▶'}</span> Show Technical Details
+                  </button>
+                  {showTechDetails && (
+                    <div className="mt-2 p-3 bg-white border border-rose-200/30 rounded-lg space-y-2 font-mono text-[10px] text-rose-800 break-all max-h-60 overflow-y-auto">
+                      <div>
+                        <span className="font-bold block text-rose-900 mb-0.5">revert signature:</span>
+                        <code className="bg-slate-50 px-1 py-0.5 rounded border border-slate-100">{errorDetails.revertSignature}</code>
+                      </div>
+                      <div>
+                        <span className="font-bold block text-rose-900 mb-0.5">raw error:</span>
+                        <code className="bg-slate-50 px-1 py-0.5 rounded border border-slate-100 block max-h-24 overflow-y-auto whitespace-pre-wrap">{errorDetails.rawError}</code>
+                      </div>
+                      <div>
+                        <span className="font-bold block text-rose-900 mb-0.5">calldata:</span>
+                        <code className="bg-slate-50 px-1 py-0.5 rounded border border-slate-100 block max-h-24 overflow-y-auto">{errorDetails.calldata}</code>
+                      </div>
+                      <div>
+                        <span className="font-bold block text-rose-900 mb-0.5">tx hash (if available):</span>
+                        <code className="bg-slate-50 px-1 py-0.5 rounded border border-slate-100">{errorDetails.txHash || 'Not available'}</code>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                <div className="pt-2 flex justify-start">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setLocalDeployError(null);
+                      if (typeof resetDeploy === 'function') {
+                        resetDeploy();
+                      }
+                      setStep(3);
+                    }}
+                    className="bg-white hover:bg-rose-100 text-rose-600 border border-rose-200 font-bold py-1.5 px-4 rounded-xl text-[11px] transition cursor-pointer"
+                  >
+                    Go Back & Retry
+                  </button>
+                </div>
+              </div>
+            );
+          })()}
           {/* Manual import fallback */}
           <div className="pt-6 border-t border-slate-100 text-left space-y-2.5">
             <h4 className="text-xs font-bold uppercase tracking-wider text-slate-700">Manual Import Fallback</h4>
