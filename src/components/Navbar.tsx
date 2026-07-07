@@ -2,8 +2,8 @@
 
 import { ConnectButton } from '@rainbow-me/rainbowkit';
 import { useAccount, useChainId, useSwitchChain } from 'wagmi';
-import { base, baseSepolia } from 'wagmi/chains';
-import { ShieldAlert, Terminal, AlertTriangle, Layers, LayoutDashboard, Rocket } from 'lucide-react';
+import { base } from 'wagmi/chains';
+import { ShieldAlert, AlertTriangle, Layers, LayoutDashboard, Rocket } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 
@@ -13,9 +13,8 @@ export default function Navbar() {
   const chainId = useChainId();
   const { switchChain } = useSwitchChain();
 
-  const isBaseSepolia = chainId === baseSepolia.id;
   const isBaseMainnet = chainId === base.id;
-  const isSupported = isBaseSepolia || isBaseMainnet;
+  const isSupported = isBaseMainnet;
 
   return (
     <>
@@ -31,12 +30,12 @@ export default function Navbar() {
       {isConnected && !isSupported && (
         <div className="bg-rose-500 text-white text-xs md:text-sm py-2 px-4 font-medium flex items-center justify-center gap-2 border-b border-rose-600 shadow-sm">
           <ShieldAlert className="size-4 shrink-0" />
-          <span>You are connected to an unsupported network.</span>
+          <span>You are connected to an unsupported network. Please connect to Base Mainnet.</span>
           <button
-            onClick={() => switchChain({ chainId: baseSepolia.id })}
+            onClick={() => switchChain({ chainId: base.id })}
             className="ml-2 bg-white text-rose-600 hover:bg-rose-50 text-[11px] font-bold py-1 px-3.5 rounded transition"
           >
-            Switch to Base Sepolia
+            Switch to Base Mainnet
           </button>
         </div>
       )}
@@ -87,43 +86,13 @@ export default function Navbar() {
 
           {/* Web3 Connections */}
           <div className="flex items-center gap-4">
-            {/* Custom Network Switcher */}
-            {isConnected && isSupported && (
-              <div className="flex items-center gap-1 bg-slate-100 p-0.5 rounded-lg text-xs font-semibold">
-                <button
-                  onClick={() => switchChain({ chainId: baseSepolia.id })}
-                  className={`px-2.5 py-1 rounded-md transition ${
-                    isBaseSepolia
-                      ? 'bg-white text-slate-800 shadow-sm border border-slate-200/50'
-                      : 'text-slate-500 hover:text-slate-800'
-                  }`}
-                >
-                  Sepolia
-                </button>
-                <button
-                  onClick={() => switchChain({ chainId: base.id })}
-                  className={`px-2.5 py-1 rounded-md transition ${
-                    isBaseMainnet
-                      ? 'bg-white text-slate-800 shadow-sm border border-slate-200/50'
-                      : 'text-slate-500 hover:text-slate-800'
-                  }`}
-                >
-                  Mainnet
-                </button>
-              </div>
-            )}
-
             {/* Custom Badge to show Network status */}
             {isConnected && isSupported && (
               <span
-                className={`hidden sm:inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border ${
-                  isBaseSepolia
-                    ? 'bg-amber-50 text-amber-600 border-amber-200'
-                    : 'bg-emerald-50 text-emerald-600 border-emerald-200'
-                }`}
+                className="hidden sm:inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border bg-emerald-50 text-emerald-600 border-emerald-200"
               >
-                <span className={`size-1.5 rounded-full ${isBaseSepolia ? 'bg-amber-500' : 'bg-emerald-500'}`} />
-                {isBaseSepolia ? 'Base Sepolia' : 'Base Mainnet'}
+                <span className="size-1.5 rounded-full bg-emerald-500" />
+                Base Mainnet
               </span>
             )}
 

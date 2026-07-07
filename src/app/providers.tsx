@@ -3,22 +3,27 @@
 import '@rainbow-me/rainbowkit/styles.css';
 import { RainbowKitProvider, getDefaultConfig, lightTheme } from '@rainbow-me/rainbowkit';
 import { WagmiProvider } from 'wagmi';
-import { base, baseSepolia } from 'wagmi/chains';
+import { base } from 'wagmi/chains';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useState, ReactNode } from 'react';
 
-// RainbowKit configuration
-// For MVP/testing, we configure with baseSepolia and base
+const projectId = process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID;
+
 const config = getDefaultConfig({
   appName: 'B20 Studio',
-  projectId: 'a587425ce3b44cd5a0c6d6c3816afb8e', // Generic WalletConnect Project ID placeholder
-  chains: [baseSepolia, base],
+  projectId: projectId as string,
+  chains: [base],
   ssr: true, // Enable Server Side Rendering support
 });
 
 export function Providers({ children }: { children: ReactNode }) {
   // Create a QueryClient instance on client side
   const [queryClient] = useState(() => new QueryClient());
+
+  // Fail clearly at runtime if the WalletConnect project ID is missing
+  if (typeof window !== 'undefined' && !process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID) {
+    throw new Error("CRITICAL: NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID is not configured. Please add it to your environment variables.");
+  }
 
   return (
     <WagmiProvider config={config}>
@@ -29,7 +34,7 @@ export function Providers({ children }: { children: ReactNode }) {
             accentColorForeground: 'white',
             borderRadius: 'medium',
           })}
-          initialChain={baseSepolia}
+          initialChain={base}
         >
           {children}
         </RainbowKitProvider>
@@ -37,3 +42,4 @@ export function Providers({ children }: { children: ReactNode }) {
     </WagmiProvider>
   );
 }
+

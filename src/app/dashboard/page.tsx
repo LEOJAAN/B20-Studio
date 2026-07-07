@@ -17,7 +17,7 @@ import Link from 'next/link';
 export default function Dashboard() {
   const { isConnected, address: userAddress } = useAccount();
   const chainId = useChainId();
-  const currentNetwork = chainId === base.id ? 'mainnet' : 'sepolia';
+  const currentNetwork = 'mainnet';
 
   // State
   const [tokens, setTokens] = useState<TokenMetadata[]>([]);
@@ -26,6 +26,8 @@ export default function Dashboard() {
   const [isImporting, setIsImporting] = useState(false);
   const [txLogs, setTxLogs] = useState<B20TxLog[]>([]);
   const [isCopied, setIsCopied] = useState(false);
+  const [importError, setImportError] = useState<string | null>(null);
+  const [importSuccess, setImportSuccess] = useState<string | null>(null);
 
   // Hook details query for the selected token
   const { 
@@ -61,8 +63,10 @@ export default function Dashboard() {
   // Import B20 Token Address directly
   const handleImportToken = async (e: React.FormEvent) => {
     e.preventDefault();
+    setImportError(null);
+    setImportSuccess(null);
     if (!importAddress || !isAddress(importAddress)) {
-      alert('Please enter a valid contract address.');
+      setImportError('Please enter a valid contract address.');
       return;
     }
 
@@ -70,12 +74,11 @@ export default function Dashboard() {
     const tokenExists = tokens.some(t => {
       const addrMatch = t.address.toLowerCase() === importAddress.toLowerCase();
       if (!addrMatch) return false;
-      const isMainnetMatch = (currentNetwork === 'mainnet' && (t.network === 'mainnet' || t.network === 'base'));
-      const isSepoliaMatch = (currentNetwork === 'sepolia' && (t.network === 'sepolia' || t.network === 'baseSepolia'));
-      return isMainnetMatch || isSepoliaMatch;
+      const isMainnetMatch = (t.network === 'mainnet' || t.network === 'base');
+      return isMainnetMatch;
     });
     if (tokenExists) {
-      alert('Token is already imported.');
+      setImportError('Token is already imported.');
       return;
     }
 
@@ -100,10 +103,10 @@ export default function Dashboard() {
       localStorage.setItem('b20_tokens', JSON.stringify(updated));
       setSelectedToken(rawImport);
       setImportAddress('');
-      alert('Token address registered. Connecting to Base nodes to resolve contract parameters...');
+      setImportSuccess('Token address registered. Connecting to Base nodes to resolve contract parameters...');
     } catch (err) {
       console.error(err);
-      alert('Failed to register token.');
+      setImportError('Failed to register token.');
     } finally {
       setIsImporting(false);
     }
@@ -155,7 +158,7 @@ export default function Dashboard() {
   };
 
   const getExplorerUrl = (addressOrTx: string, type: 'address' | 'tx' = 'address') => {
-    const baseUri = (selectedToken?.network === 'base' || selectedToken?.network === 'mainnet') ? 'https://basescan.org' : 'https://sepolia.basescan.org';
+    const baseUri = 'https://basescan.org';
     return `${baseUri}/${type}/${addressOrTx}`;
   };
 
@@ -166,13 +169,7 @@ export default function Dashboard() {
     }
   };
 
-  const activeTokens = tokens.filter(t => {
-    if (currentNetwork === 'mainnet') {
-      return t.network === 'mainnet' || t.network === 'base';
-    } else {
-      return t.network === 'sepolia' || t.network === 'baseSepolia';
-    }
-  });
+  const activeTokens = tokens.filter(t => t.network === 'mainnet' || t.network === 'base');
 
   return (
     <div className="flex flex-col min-h-screen bg-slate-50/50">
@@ -189,9 +186,7 @@ export default function Dashboard() {
             <p className="text-sm text-slate-500 max-w-sm mx-auto leading-relaxed">
               Connect your Web3 wallet to manage deployed B20 tokens, mint new supply, update pause gates, or modify security registry parameters.
             </p>
-            <div className="pt-2">
-              <span className="text-xs text-slate-400 block mb-4">Sepolia testnet tokens require zero real gas costs.</span>
-            </div>
+            <div className="pt-2" />
           </div>
         ) : (
           /* DASHBOARD INTERFACE */
@@ -208,7 +203,7 @@ export default function Dashboard() {
                     My B20 Tokens
                   </h3>
                   <span className="text-[10px] bg-slate-100 px-2 py-0.5 rounded-full font-bold text-slate-500 uppercase tracking-wider">
-                    {currentNetwork === 'mainnet' ? 'Mainnet' : 'Sepolia'}
+                    Mainnet
                   </span>
                 </div>
 
@@ -271,7 +266,7 @@ export default function Dashboard() {
               <div className="bg-white border border-slate-200/80 rounded-2xl p-5 shadow-sm space-y-4">
                 <div>
                   <h4 className="font-bold text-slate-900 text-sm">Import Existing B20</h4>
-                  <p className="text-xs text-slate-500 mt-0.5">Enter a deterministic address deployed on {currentNetwork === 'mainnet' ? 'Base Mainnet' : 'Base Sepolia'}.</p>
+                  <p className="text-xs text-slate-500 mt-0.5">Enter a deterministic address deployed on Base Mainnet.</p>
                 </div>
 
                 <form onSubmit={handleImportToken} className="space-y-3">
@@ -285,6 +280,18 @@ export default function Dashboard() {
                       className="w-full bg-slate-50 border border-slate-200 hover:border-slate-300 focus:border-blue-500 focus:bg-white rounded-xl pl-9 pr-4 py-2.5 text-xs transition outline-none font-mono"
                     />
                   </div>
+                  {importError && (
+                    <div className="text-xs bg-rose-50 border border-rose-200 text-rose-600 rounded-xl p-3 flex justify-between items-center w-full">
+                      <span>{importError}</span>
+                      <button type="button" onClick={() => setImportError(null)} className="text-[10px] text-rose-500 font-bold hover:text-rose-700">Clear</button>
+                    </div>
+                  )}
+                  {importSuccess && (
+                    <div className="text-xs bg-emerald-50 border border-emerald-200 text-emerald-600 rounded-xl p-3 flex justify-between items-center w-full">
+                      <span>{importSuccess}</span>
+                      <button type="button" onClick={() => setImportSuccess(null)} className="text-[10px] text-emerald-500 font-bold hover:text-emerald-700">Clear</button>
+                    </div>
+                  )}
                   <button
                     type="submit"
                     disabled={isImporting || !importAddress}
@@ -319,14 +326,14 @@ export default function Dashboard() {
                 ) : (
                   <div className="space-y-3 max-h-[220px] overflow-y-auto pr-1">
                     {txLogs.map((log, idx) => {
-                      const logExplorer = `${(log.network === 'base' || log.network === 'mainnet') ? 'https://basescan.org' : 'https://sepolia.basescan.org'}/tx/${log.hash}`;
+                      const logExplorer = `https://basescan.org/tx/${log.hash}`;
                       
                       return (
                         <div key={idx} className="text-xs border-b border-slate-100 pb-2.5 last:border-0 last:pb-0 flex items-start justify-between gap-2">
                           <div className="space-y-0.5">
                             <span className="font-bold text-slate-700 block leading-tight">{log.action}</span>
                             <span className="text-[10px] text-slate-400 block">
-                              {new Date(log.timestamp).toLocaleTimeString()} · {(log.network === 'base' || log.network === 'mainnet') ? 'Mainnet' : 'Sepolia'}
+                              {new Date(log.timestamp).toLocaleTimeString()} · Mainnet
                             </span>
                           </div>
                           <a 
@@ -396,12 +403,8 @@ export default function Dashboard() {
                       </div>
 
                       <div className="flex sm:flex-col items-center sm:items-end gap-2 shrink-0">
-                        <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold uppercase tracking-wider border ${
-                          (selectedToken.network === 'base' || selectedToken.network === 'mainnet')
-                            ? 'bg-emerald-50 text-emerald-600 border-emerald-200'
-                            : 'bg-amber-50 text-amber-600 border-amber-200'
-                        }`}>
-                          {(selectedToken.network === 'base' || selectedToken.network === 'mainnet') ? 'Base Mainnet' : 'Base Sepolia'}
+                        <span className="px-2.5 py-0.5 rounded-full text-xs font-bold uppercase tracking-wider border bg-emerald-50 text-emerald-600 border-emerald-200">
+                          Base Mainnet
                         </span>
                         
                         <a

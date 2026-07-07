@@ -9,7 +9,7 @@ export enum PausableFeature {
   BURN = 2
 }
 
-export type NetworkType = 'base' | 'baseSepolia' | 'mainnet' | 'sepolia';
+export type NetworkType = 'base' | 'mainnet';
 
 export interface TokenMetadata {
   address: string;

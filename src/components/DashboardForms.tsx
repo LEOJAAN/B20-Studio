@@ -46,7 +46,7 @@ export default function DashboardForms({
   const { isConnected, address: userAddress } = useAccount();
   const chainId = useChainId();
   const isMainnet = chainId === base.id;
-  const network: NetworkType = isMainnet ? 'base' : 'baseSepolia';
+  const network: NetworkType = 'base';
 
   // Token Actions Hook
   const {
@@ -73,6 +73,12 @@ export default function DashboardForms({
 
   const [activeTab, setActiveTab] = useState<'mint' | 'burn' | 'pause' | 'roles' | 'config'>('mint');
   const [copiedRole, setCopiedRole] = useState<string | null>(null);
+  const [validationError, setValidationError] = useState<string | null>(null);
+
+  // Clear validation error when changing tabs
+  useEffect(() => {
+    setValidationError(null);
+  }, [activeTab]);
 
   // Trigger refetch once a transaction completes successfully
   useEffect(() => {
@@ -131,9 +137,10 @@ export default function DashboardForms({
   // Submit Handlers
   const handleMint = async (e: React.FormEvent) => {
     e.preventDefault();
+    setValidationError(null);
     if (!mintAmount || !mintRecipient) return;
     if (!isAddress(mintRecipient)) {
-      alert('Invalid recipient address.');
+      setValidationError('Invalid recipient address.');
       return;
     }
     
@@ -187,9 +194,10 @@ export default function DashboardForms({
   };
 
   const handleRoleAction = async (action: 'grant' | 'revoke') => {
+    setValidationError(null);
     if (!roleInput) return;
     if (!isAddress(roleInput)) {
-      alert('Invalid account address.');
+      setValidationError('Invalid account address.');
       return;
     }
 
@@ -276,14 +284,23 @@ export default function DashboardForms({
           <span>{isTxPending ? 'Awaiting wallet confirmation...' : 'Confirming onchain...'}</span>
           {txHash && (
             <a 
-              href={isMainnet ? `https://basescan.org/tx/${txHash}` : `https://sepolia.basescan.org/tx/${txHash}`}
-              target="_blank" 
-              rel="noreferrer" 
-              className="ml-auto underline hover:text-blue-900"
-            >
-              View Tx
-            </a>
+            href={`https://basescan.org/tx/${txHash}`}
+            target="_blank" 
+            rel="noreferrer" 
+            className="ml-auto underline hover:text-blue-900"
+          >
+            View Tx
+          </a>
           )}
+        </div>
+      )}
+
+      {validationError && (
+        <div className="bg-rose-50 border-b border-rose-100 text-rose-600 py-3 px-4 text-xs flex justify-between items-center">
+          <div>
+            <strong>Validation Error:</strong> {validationError}
+          </div>
+          <button onClick={() => setValidationError(null)} className="text-[10px] text-rose-500 font-bold hover:text-rose-700">Clear</button>
         </div>
       )}
 

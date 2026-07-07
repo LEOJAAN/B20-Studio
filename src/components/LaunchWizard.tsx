@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { useAccount, useChainId, useWaitForTransactionReceipt, useReadContract, useSimulateContract, useWriteContract, usePublicClient, useBalance } from 'wagmi';
-import { base, baseSepolia } from 'wagmi/chains';
+import { base } from 'wagmi/chains';
 import { parseUnits, keccak256, toHex, zeroAddress, parseEventLogs, isAddress, encodeFunctionData } from 'viem';
 import { 
   Coins, Building2, ShieldAlert, Globe, X as TwitterIcon, Send, 
@@ -19,7 +19,7 @@ import { B20Variant, NetworkType, TokenMetadata } from '../types';
 export default function LaunchWizard() {
   const { isConnected, address: userAddress } = useAccount();
   const chainId = useChainId();
-  const currentNetwork: NetworkType = chainId === base.id ? 'mainnet' : 'sepolia';
+  const currentNetwork: NetworkType = 'mainnet';
 
   // State
   const [step, setStep] = useState(1);
@@ -83,6 +83,7 @@ export default function LaunchWizard() {
 
   // Custom status and error states
   const [localDeployError, setLocalDeployError] = useState<any | null>(null);
+  const [validationError, setValidationError] = useState<string | null>(null);
   const [showTechDetails, setShowTechDetails] = useState(false);
   const [rpcStatus, setRpcStatus] = useState<'Healthy' | 'Unavailable' | 'Pending'>('Pending');
   const [factoryStatus, setFactoryStatus] = useState<'Reachable' | 'Unavailable' | 'Pending'>('Pending');
@@ -384,8 +385,9 @@ export default function LaunchWizard() {
   const handleDeploy = async () => {
     setLocalDeployError(null);
     setShowTechDetails(false);
+    setValidationError(null);
     if (chainId === base.id && !acknowledgedMainnet) {
-      alert("Please acknowledge that you are deploying on Base Mainnet using real funds.");
+      setValidationError("Please acknowledge that you are deploying on Base Mainnet using real funds.");
       return;
     }
 
@@ -461,8 +463,9 @@ export default function LaunchWizard() {
   };
 
   const handleManualImport = () => {
+    setValidationError(null);
     if (!manualImportAddress || !isAddress(manualImportAddress)) {
-      alert("Please enter a valid contract address.");
+      setValidationError("Please enter a valid contract address.");
       return;
     }
 
@@ -650,7 +653,7 @@ export default function LaunchWizard() {
   };
 
   const getExplorerUrl = (addressOrTx: string, type: 'address' | 'tx' = 'address') => {
-    const baseUri = currentNetwork === 'mainnet' ? 'https://basescan.org' : 'https://sepolia.basescan.org';
+    const baseUri = 'https://basescan.org';
     return `${baseUri}/${type}/${addressOrTx}`;
   };
 
@@ -672,7 +675,7 @@ export default function LaunchWizard() {
           <div className="p-3 bg-slate-50/50 border border-slate-100 rounded-xl">
             <span className="block text-[10px] text-slate-400 font-bold uppercase tracking-wider font-semibold">Network</span>
             <span className="block text-xs font-bold text-slate-700 mt-1">
-              {chainId === base.id ? 'Base Mainnet' : chainId === baseSepolia.id ? 'Base Sepolia' : 'Unknown Network'}
+              {chainId === base.id ? 'Base Mainnet' : 'Unknown Network'}
             </span>
           </div>
           
@@ -1086,18 +1089,26 @@ export default function LaunchWizard() {
               </div>
             )}
 
+            {validationError && (
+              <div className="text-xs bg-rose-50 border border-rose-200 text-rose-600 rounded-xl p-3 flex justify-between items-center w-full">
+                <span>{validationError}</span>
+                <button type="button" onClick={() => setValidationError(null)} className="text-[10px] text-rose-500 font-bold hover:text-rose-700">Clear</button>
+              </div>
+            )}
+
             {/* Buttons */}
             <div className="flex items-center justify-between pt-4">
               <button
-                onClick={() => setStep(1)}
+                onClick={() => { setValidationError(null); setStep(1); }}
                 className="flex items-center gap-1.5 text-slate-600 hover:text-slate-900 text-sm font-semibold py-2 px-4 rounded-xl transition"
               >
                 <ChevronLeft className="size-4" /> Back
               </button>
               <button
                 onClick={() => {
+                  setValidationError(null);
                   if (!name || !symbol) {
-                    alert('Please fill in Name and Symbol.');
+                    setValidationError('Please fill in Name and Symbol.');
                     return;
                   }
                   setStep(3);
@@ -1322,12 +1333,18 @@ export default function LaunchWizard() {
                 Waiting for official Base B20 activation.
               </div>
             )}
+            {validationError && (
+              <div className="text-xs bg-rose-50 border border-rose-200 text-rose-600 rounded-xl p-3.5 flex justify-between items-center mt-4">
+                <span>{validationError}</span>
+                <button type="button" onClick={() => setValidationError(null)} className="text-[10px] text-rose-500 font-bold hover:text-rose-700">Clear</button>
+              </div>
+            )}
           </div>
 
           {/* Action buttons */}
           <div className="flex items-center justify-between border-t border-slate-100 pt-4">
             <button
-              onClick={() => setStep(2)}
+              onClick={() => { setValidationError(null); setStep(2); }}
               className="flex items-center gap-1.5 text-slate-600 hover:text-slate-900 text-sm font-semibold py-2 px-4 rounded-xl transition"
             >
               <ChevronLeft className="size-4" /> Edit Details
@@ -1461,6 +1478,12 @@ export default function LaunchWizard() {
             <p className="text-[11px] text-slate-500 leading-relaxed">
               If the transaction succeeded but the app is stuck in the loading loop, you can paste the contract address manually to register it and proceed to the success step.
             </p>
+            {validationError && (
+              <div className="text-xs bg-rose-50 border border-rose-200 text-rose-600 rounded-xl p-3 flex justify-between items-center mb-2 text-left w-full font-sans">
+                <span>{validationError}</span>
+                <button type="button" onClick={() => setValidationError(null)} className="text-[10px] text-rose-500 font-bold hover:text-rose-700">Clear</button>
+              </div>
+            )}
             <div className="flex gap-2">
               <input
                 type="text"
@@ -1494,7 +1517,7 @@ export default function LaunchWizard() {
           <div className="space-y-2">
             <h3 className="text-2xl font-black text-slate-900 tracking-tight">Token Launched Successfully!</h3>
             <p className="text-sm text-slate-500">
-              Your native B20 token is now initialized and live on <strong>{currentNetwork === 'mainnet' ? 'Base Mainnet' : 'Base Sepolia'}</strong>.
+              Your native B20 token is now initialized and live on <strong>Base Mainnet</strong>.
             </p>
           </div>
 
