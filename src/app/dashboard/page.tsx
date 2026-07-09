@@ -21,7 +21,20 @@ export default function Dashboard() {
 
   // State
   const [tokens, setTokens] = useState<TokenMetadata[]>([]);
-  const [selectedToken, setSelectedToken] = useState<TokenMetadata | null>(null);
+  const [selectedTokenAddress, setSelectedTokenAddress] = useState<string | null>(null);
+
+  // Derive selectedToken from tokens list using selectedTokenAddress as single source of truth
+  const selectedToken = useMemo(() => {
+    if (!selectedTokenAddress) return null;
+    return tokens.find(t => t.address.toLowerCase() === selectedTokenAddress.toLowerCase()) || null;
+  }, [tokens, selectedTokenAddress]);
+
+  // Debug log when selected token address changes
+  useEffect(() => {
+    if (selectedTokenAddress) {
+      console.log(`[DEBUG] selectedTokenAddress changed to: ${selectedTokenAddress}`);
+    }
+  }, [selectedTokenAddress]);
   const [importAddress, setImportAddress] = useState('');
   const [isImporting, setIsImporting] = useState(false);
   const [txLogs, setTxLogs] = useState<B20TxLog[]>([]);
@@ -29,12 +42,12 @@ export default function Dashboard() {
   const [importError, setImportError] = useState<string | null>(null);
   const [importSuccess, setImportSuccess] = useState<string | null>(null);
 
-  // Hook details query for the selected token
+  // Hook details query for the selected token address
   const { 
     details, 
     isLoading: isDetailsLoading, 
     refetch: refetchDetails 
-  } = useB20Details(selectedToken?.address as `0x${string}`, userAddress);
+  } = useB20Details(selectedTokenAddress as `0x${string}`, userAddress);
 
   // Load tokens and logs from localStorage
   useEffect(() => {
@@ -50,8 +63,8 @@ export default function Dashboard() {
       setTokens(parsedTokens);
       
       // Auto-select first token if available
-      if (parsedTokens.length > 0 && !selectedToken) {
-        setSelectedToken(parsedTokens[0]);
+      if (parsedTokens.length > 0 && !selectedTokenAddress) {
+        setSelectedTokenAddress(parsedTokens[0].address);
       }
     }
     
@@ -101,7 +114,7 @@ export default function Dashboard() {
       const updated = [...tokens, rawImport];
       setTokens(updated);
       localStorage.setItem('b20_tokens', JSON.stringify(updated));
-      setSelectedToken(rawImport);
+      setSelectedTokenAddress(importAddress);
       setImportAddress('');
       setImportSuccess('Token address registered. Connecting to Base nodes to resolve contract parameters...');
     } catch (err) {
@@ -168,12 +181,7 @@ export default function Dashboard() {
 
         setTokens(updatedTokens);
         localStorage.setItem('b20_tokens', JSON.stringify(updatedTokens));
-        
-        // Update selectedToken state
-        const found = updatedTokens.find(t => t.address.toLowerCase() === selectedToken.address.toLowerCase());
-        if (found) {
-          setSelectedToken(found);
-        }
+        // selection state is preserved automatically as selectedToken is derived from selectedTokenAddress
       }
     }
   }, [details]);
@@ -247,15 +255,16 @@ export default function Dashboard() {
                 ) : (
                   <div className="space-y-2 max-h-[300px] overflow-y-auto pr-1">
                     {activeTokens.map((t) => {
-                      const isSelected = selectedToken?.address.toLowerCase() === t.address.toLowerCase();
+                      const isSelected = selectedTokenAddress?.toLowerCase() === t.address.toLowerCase();
                       const isStable = t.variant === B20Variant.STABLECOIN;
                       
                       return (
                         <div
                           key={t.address}
                           onClick={() => {
-                            if (selectedToken?.address.toLowerCase() !== t.address.toLowerCase()) {
-                              setSelectedToken(t);
+                            console.log(`[DEBUG] Token card clicked: ${t.name} (${t.address})`);
+                            if (selectedTokenAddress?.toLowerCase() !== t.address.toLowerCase()) {
+                              setSelectedTokenAddress(t.address);
                             }
                           }}
                           className={`flex items-center gap-3 p-3 rounded-xl cursor-pointer border transition text-left ${
