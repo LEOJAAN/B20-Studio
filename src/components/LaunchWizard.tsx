@@ -714,9 +714,15 @@ export default function LaunchWizard() {
           <div className="p-3 bg-slate-50/50 border border-slate-100 rounded-xl flex flex-col justify-between">
             <span className="block text-[10px] text-slate-400 font-bold uppercase tracking-wider font-semibold">B20 Activation</span>
             <div className="mt-1 flex flex-col gap-1 items-start">
-              <span className="text-[10px] text-slate-500 font-semibold">Waiting for Official Activation</span>
-              <span className="inline-flex items-center text-[9px] sm:text-[10px] font-bold px-2 py-0.5 rounded bg-amber-50 border border-amber-200 text-amber-700 animate-pulse select-none mt-0.5">
-                Waiting for Base B20 Activation
+              <span className="text-[10px] text-slate-500 font-semibold">
+                {isB20Enabled ? 'B20 Activation' : 'Waiting for Official Activation'}
+              </span>
+              <span className={`inline-flex items-center text-[9px] sm:text-[10px] font-bold px-2 py-0.5 rounded select-none mt-0.5 ${
+                isB20Enabled 
+                  ? 'bg-emerald-50 border border-emerald-200 text-emerald-700' 
+                  : 'bg-amber-50 border border-amber-200 text-amber-700 animate-pulse'
+              }`}>
+                {isB20Enabled ? 'B20 Activation Enabled' : 'Waiting for Base B20 Activation'}
               </span>
             </div>
           </div>

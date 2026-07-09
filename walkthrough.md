@@ -120,3 +120,14 @@ We completed a comprehensive sweep of the codebase to secure the app for product
 - **Environment Variable for WalletConnect**: Updated `providers.tsx` to read the WalletConnect `projectId` from `process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID`. Added this key to [.env.example](file:///d:/Base%20b20/.env.example). Added a runtime check that fails clearly if the variable is missing on client side execution, while allowing Next.js builds to compile cleanly.
 - **Inline Validation Errors**: Removed all browser `alert()` triggers for validation checks in [LaunchWizard.tsx](file:///d:/Base%20b20/src/components/LaunchWizard.tsx), [page.tsx](file:///d:/Base%20b20/src/app/dashboard/page.tsx), and [DashboardForms.tsx](file:///d:/Base%20b20/src/components/DashboardForms.tsx). Replaced them with beautiful, user-friendly inline error/success cards with manual clear buttons.
 
+---
+
+## 6. B20 Activation Status Display Fix
+
+We resolved an inconsistency in how the B20 Activation status was displayed in the UI:
+- **Network Status Card Update**: Modified [LaunchWizard.tsx](file:///d:/Base%20b20/src/components/LaunchWizard.tsx#L714-L728) to use the existing `isB20Enabled` variable (linked to `process.env.NEXT_PUBLIC_B20_ENABLED === 'true'`).
+- **Dynamic Styling**: 
+  - When `isB20Enabled` is **true**, it now displays "B20 Activation" and a green status badge "B20 Activation Enabled" using success styles (`bg-emerald-50 border-emerald-200 text-emerald-700`).
+  - When `isB20Enabled` is **false**, it displays "Waiting for Official Activation" and a pulsing yellow badge "Waiting for Base B20 Activation".
+
+
