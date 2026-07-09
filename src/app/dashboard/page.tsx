@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useAccount, useChainId } from 'wagmi';
 import { base } from 'wagmi/chains';
 import { isAddress, formatUnits } from 'viem';
@@ -196,7 +196,7 @@ export default function Dashboard() {
     }
   };
 
-  const activeTokens = tokens.filter(t => t.network === 'mainnet' || t.network === 'base');
+  const activeTokens = useMemo(() => tokens.filter(t => t.network === 'mainnet' || t.network === 'base'), [tokens]);
 
   return (
     <div className="flex flex-col min-h-screen bg-slate-50/50">
@@ -253,7 +253,11 @@ export default function Dashboard() {
                       return (
                         <div
                           key={t.address}
-                          onClick={() => setSelectedToken(t)}
+                          onClick={() => {
+                            if (selectedToken?.address.toLowerCase() !== t.address.toLowerCase()) {
+                              setSelectedToken(t);
+                            }
+                          }}
                           className={`flex items-center gap-3 p-3 rounded-xl cursor-pointer border transition text-left ${
                             isSelected
                               ? 'bg-blue-50/50 border-blue-500/50 shadow-sm'
@@ -445,83 +449,98 @@ export default function Dashboard() {
                       </div>
                     </div>
 
-                    {isDetailsLoading ? (
-                      <div className="py-8 flex items-center justify-center gap-2 text-slate-500 text-sm font-semibold">
-                        <RefreshCw className="size-4 animate-spin text-blue-500" />
-                        <span>Syncing parameters with Base node client...</span>
+                    {/* Live parameter stats grid */}
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                      <div className="bg-slate-50/50 border border-slate-100 rounded-xl p-3 relative">
+                        {isDetailsLoading && (
+                          <RefreshCw className="size-3 animate-spin text-blue-500/70 absolute top-2 right-2" />
+                        )}
+                        <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider">Circulating Supply</span>
+                        <span className="text-base font-black text-slate-800">
+                          {details 
+                            ? (() => {
+                                try {
+                                  const formatted = formatUnits(BigInt(details.totalSupply), details.decimals);
+                                  return parseFloat(formatted).toLocaleString(undefined, { maximumFractionDigits: 6 });
+                                } catch (e) {
+                                  return '0';
+                                }
+                              })()
+                            : (() => {
+                                const parsed = parseFloat(selectedToken.totalSupply);
+                                return isNaN(parsed) ? selectedToken.totalSupply : parsed.toLocaleString(undefined, { maximumFractionDigits: 6 });
+                              })()
+                          }
+                        </span>
+                        <span className="text-[10px] text-slate-400 font-semibold uppercase">{selectedToken.symbol}</span>
                       </div>
-                    ) : (
-                      /* Live parameter stats grid */
-                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                        <div className="bg-slate-50/50 border border-slate-100 rounded-xl p-3">
-                          <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider">Circulating Supply</span>
-                          <span className="text-base font-black text-slate-800">
-                            {details 
-                              ? (() => {
-                                  try {
-                                    const formatted = formatUnits(BigInt(details.totalSupply), details.decimals);
-                                    return parseFloat(formatted).toLocaleString(undefined, { maximumFractionDigits: 6 });
-                                  } catch (e) {
-                                    return '0';
-                                  }
-                                })()
-                              : (() => {
-                                  const parsed = parseFloat(selectedToken.totalSupply);
-                                  return isNaN(parsed) ? selectedToken.totalSupply : parsed.toLocaleString(undefined, { maximumFractionDigits: 6 });
-                                })()
-                            }
-                          </span>
-                          <span className="text-[10px] text-slate-400 font-semibold uppercase">{selectedToken.symbol}</span>
-                        </div>
 
-                        <div className="bg-slate-50/50 border border-slate-100 rounded-xl p-3">
-                          <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider">Supply Cap</span>
-                          <span className="text-base font-black text-slate-800">
-                            {details 
-                              ? (() => {
-                                  const maxUint128 = '340282366920938463463374607431768211455';
-                                  const maxUint256 = '115792089237316195423570985008687907853269984665640564039457584007913129639935';
-                                  const isCapUnlimited = (
-                                    details.supplyCap === '0' || 
-                                    details.supplyCap === maxUint128 || 
-                                    details.supplyCap === maxUint256 ||
-                                    details.supplyCap === 'Unlimited'
-                                  );
-                                  if (isCapUnlimited) return 'Unlimited';
-                                  try {
-                                    const formatted = formatUnits(BigInt(details.supplyCap), details.decimals);
-                                    return parseFloat(formatted).toLocaleString(undefined, { maximumFractionDigits: 6 });
-                                  } catch (e) {
-                                    return 'Unlimited';
-                                  }
-                                })()
-                              : (() => {
-                                  if (selectedToken.supplyCap === 'Unlimited') return 'Unlimited';
-                                  const parsed = parseFloat(selectedToken.supplyCap);
-                                  return isNaN(parsed) ? selectedToken.supplyCap : parsed.toLocaleString(undefined, { maximumFractionDigits: 6 });
-                                })()
-                            }
-                          </span>
-                          <span className="text-[10px] text-slate-400 font-semibold uppercase">{selectedToken.symbol}</span>
-                        </div>
-
-                        <div className="bg-slate-50/50 border border-slate-100 rounded-xl p-3">
-                          <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider">Decimals</span>
-                          <span className="text-base font-black text-slate-800">{details?.decimals ?? selectedToken.decimals}</span>
-                          <span className="text-[10px] text-slate-400 font-semibold uppercase">Precision</span>
-                        </div>
-
-                        <div className="bg-slate-50/50 border border-slate-100 rounded-xl p-3">
-                          <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider">Token Type</span>
-                          <span className="text-base font-black text-slate-800">
-                            {details?.currency !== undefined ? 'STABLECOIN' : 'ASSET'}
-                          </span>
-                          <span className="text-[10px] text-slate-400 font-semibold uppercase truncate block">
-                            {details?.currency ? `Pegged: ${details.currency}` : details?.multiplier ? `Mult: ${details.multiplier}` : 'Base Native'}
-                          </span>
-                        </div>
+                      <div className="bg-slate-50/50 border border-slate-100 rounded-xl p-3 relative">
+                        {isDetailsLoading && (
+                          <RefreshCw className="size-3 animate-spin text-blue-500/70 absolute top-2 right-2" />
+                        )}
+                        <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider">Supply Cap</span>
+                        <span className="text-base font-black text-slate-800">
+                          {details 
+                            ? (() => {
+                                const maxUint128 = '340282366920938463463374607431768211455';
+                                const maxUint256 = '115792089237316195423570985008687907853269984665640564039457584007913129639935';
+                                const isCapUnlimited = (
+                                  details.supplyCap === '0' || 
+                                  details.supplyCap === maxUint128 || 
+                                  details.supplyCap === maxUint256 ||
+                                  details.supplyCap === 'Unlimited'
+                                );
+                                if (isCapUnlimited) return 'Unlimited';
+                                try {
+                                  const formatted = formatUnits(BigInt(details.supplyCap), details.decimals);
+                                  return parseFloat(formatted).toLocaleString(undefined, { maximumFractionDigits: 6 });
+                                } catch (e) {
+                                  return 'Unlimited';
+                                }
+                              })()
+                            : (() => {
+                                if (selectedToken.supplyCap === 'Unlimited') return 'Unlimited';
+                                const parsed = parseFloat(selectedToken.supplyCap);
+                                return isNaN(parsed) ? selectedToken.supplyCap : parsed.toLocaleString(undefined, { maximumFractionDigits: 6 });
+                              })()
+                          }
+                        </span>
+                        <span className="text-[10px] text-slate-400 font-semibold uppercase">{selectedToken.symbol}</span>
                       </div>
-                    )}
+
+                      <div className="bg-slate-50/50 border border-slate-100 rounded-xl p-3 relative">
+                        {isDetailsLoading && (
+                          <RefreshCw className="size-3 animate-spin text-blue-500/70 absolute top-2 right-2" />
+                        )}
+                        <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider">Decimals</span>
+                        <span className="text-base font-black text-slate-800">{details?.decimals ?? selectedToken.decimals}</span>
+                        <span className="text-[10px] text-slate-400 font-semibold uppercase">Precision</span>
+                      </div>
+
+                      <div className="bg-slate-50/50 border border-slate-100 rounded-xl p-3 relative">
+                        {isDetailsLoading && (
+                          <RefreshCw className="size-3 animate-spin text-blue-500/70 absolute top-2 right-2" />
+                        )}
+                        <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider">Token Type</span>
+                        <span className="text-base font-black text-slate-800">
+                          {details 
+                            ? (details.currency !== undefined ? 'STABLECOIN' : 'ASSET') 
+                            : (selectedToken.variant === B20Variant.STABLECOIN ? 'STABLECOIN' : 'ASSET')}
+                        </span>
+                        <span className="text-[10px] text-slate-400 font-semibold uppercase truncate block">
+                          {details 
+                            ? details.currency 
+                              ? `Pegged: ${details.currency}` 
+                              : details.multiplier 
+                                ? `Mult: ${details.multiplier}` 
+                                : 'Base Native'
+                            : selectedToken.currency 
+                              ? `Pegged: ${selectedToken.currency}` 
+                              : 'Base Native'}
+                        </span>
+                      </div>
+                    </div>
                   </div>
 
                   {/* Token Management Operations Panel */}
