@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAccount, useChainId } from 'wagmi';
 import { base } from 'wagmi/chains';
-import { isAddress } from 'viem';
+import { isAddress, formatUnits } from 'viem';
 import Navbar from '../../components/Navbar';
 import DashboardForms from '../../components/DashboardForms';
 import { useB20Details } from '../../hooks/useB20';
@@ -115,12 +115,39 @@ export default function Dashboard() {
   // Sync the metadata in localStorage with the real on-chain details once loaded
   useEffect(() => {
     if (details && selectedToken) {
+      // Decode raw blockchain supply values to human-readable format
+      let formattedTotalSupply = '0';
+      try {
+        formattedTotalSupply = formatUnits(BigInt(details.totalSupply), details.decimals);
+      } catch (e) {
+        console.error('Error formatting total supply', e);
+      }
+
+      const maxUint128 = '340282366920938463463374607431768211455';
+      const maxUint256 = '115792089237316195423570985008687907853269984665640564039457584007913129639935';
+      
+      const isCapUnlimited = (
+        details.supplyCap === '0' || 
+        details.supplyCap === maxUint128 || 
+        details.supplyCap === maxUint256 ||
+        details.supplyCap === 'Unlimited'
+      );
+      
+      let formattedSupplyCap = 'Unlimited';
+      if (!isCapUnlimited) {
+        try {
+          formattedSupplyCap = formatUnits(BigInt(details.supplyCap), details.decimals);
+        } catch (e) {
+          console.error('Error formatting supply cap', e);
+        }
+      }
+
       const needsUpdate = 
         selectedToken.name !== details.name ||
         selectedToken.symbol !== details.symbol ||
         selectedToken.decimals !== details.decimals ||
-        selectedToken.totalSupply !== details.totalSupply ||
-        selectedToken.supplyCap !== details.supplyCap;
+        selectedToken.totalSupply !== formattedTotalSupply ||
+        selectedToken.supplyCap !== formattedSupplyCap;
 
       if (needsUpdate) {
         const updatedTokens = tokens.map(t => {
@@ -130,8 +157,8 @@ export default function Dashboard() {
               name: details.name || t.name,
               symbol: details.symbol || t.symbol,
               decimals: details.decimals,
-              totalSupply: details.totalSupply,
-              supplyCap: details.supplyCap,
+              totalSupply: formattedTotalSupply,
+              supplyCap: formattedSupplyCap,
               variant: details.currency !== undefined ? B20Variant.STABLECOIN : B20Variant.ASSET,
               currency: details.currency
             };
@@ -429,7 +456,20 @@ export default function Dashboard() {
                         <div className="bg-slate-50/50 border border-slate-100 rounded-xl p-3">
                           <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider">Circulating Supply</span>
                           <span className="text-base font-black text-slate-800">
-                            {details ? parseFloat(details.totalSupply).toLocaleString() : parseFloat(selectedToken.totalSupply).toLocaleString()}
+                            {details 
+                              ? (() => {
+                                  try {
+                                    const formatted = formatUnits(BigInt(details.totalSupply), details.decimals);
+                                    return parseFloat(formatted).toLocaleString(undefined, { maximumFractionDigits: 6 });
+                                  } catch (e) {
+                                    return '0';
+                                  }
+                                })()
+                              : (() => {
+                                  const parsed = parseFloat(selectedToken.totalSupply);
+                                  return isNaN(parsed) ? selectedToken.totalSupply : parsed.toLocaleString(undefined, { maximumFractionDigits: 6 });
+                                })()
+                            }
                           </span>
                           <span className="text-[10px] text-slate-400 font-semibold uppercase">{selectedToken.symbol}</span>
                         </div>
@@ -438,10 +478,29 @@ export default function Dashboard() {
                           <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider">Supply Cap</span>
                           <span className="text-base font-black text-slate-800">
                             {details 
-                              ? details.supplyCap === '340282366920938463463374607431768211455' // type(uint128).max
-                                ? 'Unlimited'
-                                : parseFloat(details.supplyCap).toLocaleString()
-                              : selectedToken.supplyCap}
+                              ? (() => {
+                                  const maxUint128 = '340282366920938463463374607431768211455';
+                                  const maxUint256 = '115792089237316195423570985008687907853269984665640564039457584007913129639935';
+                                  const isCapUnlimited = (
+                                    details.supplyCap === '0' || 
+                                    details.supplyCap === maxUint128 || 
+                                    details.supplyCap === maxUint256 ||
+                                    details.supplyCap === 'Unlimited'
+                                  );
+                                  if (isCapUnlimited) return 'Unlimited';
+                                  try {
+                                    const formatted = formatUnits(BigInt(details.supplyCap), details.decimals);
+                                    return parseFloat(formatted).toLocaleString(undefined, { maximumFractionDigits: 6 });
+                                  } catch (e) {
+                                    return 'Unlimited';
+                                  }
+                                })()
+                              : (() => {
+                                  if (selectedToken.supplyCap === 'Unlimited') return 'Unlimited';
+                                  const parsed = parseFloat(selectedToken.supplyCap);
+                                  return isNaN(parsed) ? selectedToken.supplyCap : parsed.toLocaleString(undefined, { maximumFractionDigits: 6 });
+                                })()
+                            }
                           </span>
                           <span className="text-[10px] text-slate-400 font-semibold uppercase">{selectedToken.symbol}</span>
                         </div>
