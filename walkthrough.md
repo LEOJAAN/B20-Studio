@@ -130,4 +130,13 @@ We resolved an inconsistency in how the B20 Activation status was displayed in t
   - When `isB20Enabled` is **true**, it now displays "B20 Activation" and a green status badge "B20 Activation Enabled" using success styles (`bg-emerald-50 border-emerald-200 text-emerald-700`).
   - When `isB20Enabled` is **false**, it displays "Waiting for Official Activation" and a pulsing yellow badge "Waiting for Base B20 Activation".
 
+---
+
+## 7. Salt Regeneration Fix
+
+We resolved the salt reuse issue that could cause contract address collisions upon sequential launches:
+- **Regenerate Salt on Reset**: Updated the "Launch Another Token" onClick handler in [LaunchWizard.tsx](file:///d:/Base%20b20/src/components/LaunchWizard.tsx#L1586) to generate a fresh, unique bytes32 salt using the standard format: `setSalt(keccak256(toHex(Math.random().toString() + Date.now().toString())))`.
+- **Validation**: Recalculating the salt triggers Wagmi to update parameters, resulting in a correct simulation, updated predicted address, and zero chance of sequential address collisions.
+
+
 

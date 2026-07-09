@@ -1583,6 +1583,7 @@ export default function LaunchWizard() {
                 setTwitter('');
                 setTelegram('');
                 setTokenType('meme');
+                setSalt(keccak256(toHex(Math.random().toString() + Date.now().toString())));
                 setStep(1);
               }}
               className="w-full sm:w-auto bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-bold py-2.5 px-6 rounded-xl transition"
