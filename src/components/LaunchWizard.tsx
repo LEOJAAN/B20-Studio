@@ -434,18 +434,19 @@ export default function LaunchWizard() {
         throw new Error("Wallet client is not ready. Please verify connection.");
       }
 
-      console.log("[Attribution Audit] Deploy original request.data ending:", (request as any).data?.slice(-60));
-      console.log("[Attribution Audit] Deploy requestClone.data ending:", (requestClone as any).data?.slice(-60));
-      const BUILDER_CODE_SUFFIX = "62635f3366306f733971380b0080218021802180218021802180218021";
-      console.log("[Attribution Audit] Deploy ends with suffix:", (requestClone as any).data?.endsWith(BUILDER_CODE_SUFFIX));
+      if (process.env.NODE_ENV !== 'production') {
+        console.log("[Attribution Audit] Deploy original request.data ending:", (request as any).data?.slice(-60));
+        console.log("[Attribution Audit] Deploy requestClone.data ending:", (requestClone as any).data?.slice(-60));
+        const BUILDER_CODE_SUFFIX = "62635f3366306f733971380b0080218021802180218021802180218021";
+        console.log("[Attribution Audit] Deploy ends with suffix:", (requestClone as any).data?.endsWith(BUILDER_CODE_SUFFIX));
+      }
 
       const tx = await sendTransaction(walletClient as any, {
-        account: requestClone.account,
-        chain: walletClient.chain,
+        account: requestClone.account || userAddress!,
+        chain: walletClient.chain || base,
         to: (requestClone as any).address,
         data: (requestClone as any).data,
-        value: (requestClone as any).value,
-        gas: (requestClone as any).gas
+        value: (requestClone as any).value
       });
 
       if (tx) {

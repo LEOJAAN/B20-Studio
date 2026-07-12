@@ -4,6 +4,7 @@ import { B20_FACTORY_ADDRESS, B20_FACTORY_ABI, B20_TOKEN_ABI, DEFAULT_ADMIN_ROLE
 import { B20Variant, NetworkType } from '../types';
 import { parseEventLogs, zeroAddress } from 'viem';
 import { sendTransaction } from 'viem/actions';
+import { base } from 'viem/chains';
 
 export const BUILDER_CODE_SUFFIX = "62635f3366306f733971380b0080218021802180218021802180218021";
 
@@ -66,17 +67,18 @@ export function useB20Factory() {
 
         const requestClone = appendBuilderSuffix(request);
 
-        console.log("[Attribution Audit] deployB20 original request.data ending:", (request as any).data?.slice(-60));
-        console.log("[Attribution Audit] deployB20 requestClone.data ending:", (requestClone as any).data?.slice(-60));
-        console.log("[Attribution Audit] deployB20 ends with suffix:", (requestClone as any).data?.endsWith(BUILDER_CODE_SUFFIX));
+        if (process.env.NODE_ENV !== 'production') {
+          console.log("[Attribution Audit] deployB20 original request.data ending:", (request as any).data?.slice(-60));
+          console.log("[Attribution Audit] deployB20 requestClone.data ending:", (requestClone as any).data?.slice(-60));
+          console.log("[Attribution Audit] deployB20 ends with suffix:", (requestClone as any).data?.endsWith(BUILDER_CODE_SUFFIX));
+        }
 
         const tx = await sendTransaction(walletClient as any, {
-          account: requestClone.account,
-          chain: walletClient.chain,
+          account: requestClone.account || userAddress!,
+          chain: walletClient.chain || base,
           to: (requestClone as any).address,
           data: (requestClone as any).data,
-          value: (requestClone as any).value,
-          gas: (requestClone as any).gas
+          value: (requestClone as any).value
         });
 
         setTxHash(tx);
@@ -273,17 +275,18 @@ export function useB20TokenActions(tokenAddress: `0x${string}`) {
       // 2. Write contract using simulated request cloned with builder suffix
       const requestClone = appendBuilderSuffix(request);
 
-      console.log(`[Attribution Audit] ${functionName} original request.data ending:`, (request as any).data?.slice(-60));
-      console.log(`[Attribution Audit] ${functionName} requestClone.data ending:`, (requestClone as any).data?.slice(-60));
-      console.log(`[Attribution Audit] ${functionName} ends with suffix:`, (requestClone as any).data?.endsWith(BUILDER_CODE_SUFFIX));
+      if (process.env.NODE_ENV !== 'production') {
+        console.log(`[Attribution Audit] ${functionName} original request.data ending:`, (request as any).data?.slice(-60));
+        console.log(`[Attribution Audit] ${functionName} requestClone.data ending:`, (requestClone as any).data?.slice(-60));
+        console.log(`[Attribution Audit] ${functionName} ends with suffix:`, (requestClone as any).data?.endsWith(BUILDER_CODE_SUFFIX));
+      }
 
       const tx = await sendTransaction(walletClient as any, {
-        account: requestClone.account,
-        chain: walletClient.chain,
+        account: requestClone.account || userAddress!,
+        chain: walletClient.chain || base,
         to: (requestClone as any).address,
         data: (requestClone as any).data,
-        value: (requestClone as any).value,
-        gas: (requestClone as any).gas
+        value: (requestClone as any).value
       });
 
       setTxHash(tx);
