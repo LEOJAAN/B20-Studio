@@ -1,8 +1,9 @@
-import { useReadContract, useReadContracts, useWriteContract, useWaitForTransactionReceipt, useAccount, usePublicClient } from 'wagmi';
+import { useReadContract, useReadContracts, useWriteContract, useWaitForTransactionReceipt, useAccount, usePublicClient, useConnectorClient } from 'wagmi';
 import { useState } from 'react';
 import { B20_FACTORY_ADDRESS, B20_FACTORY_ABI, B20_TOKEN_ABI, DEFAULT_ADMIN_ROLE, MINT_ROLE, BURN_ROLE, PAUSE_ROLE, UNPAUSE_ROLE, METADATA_ROLE, OPERATOR_ROLE } from '../lib/b20Abi';
 import { B20Variant, NetworkType } from '../types';
 import { parseEventLogs, zeroAddress } from 'viem';
+import { sendTransaction } from 'viem/actions';
 
 export const BUILDER_CODE_SUFFIX = "62635f3366306f733971380b0080218021802180218021802180218021";
 
@@ -27,9 +28,13 @@ export function appendBuilderSuffix<T>(request: T): T {
  * Hook to interact with the B20 Factory
  */
 export function useB20Factory() {
-  const { writeContractAsync, data: hash, error, isPending } = useWriteContract();
+  const [txHash, setTxHash] = useState<`0x${string}` | undefined>(undefined);
+  const [isPending, setIsPending] = useState(false);
+  const [localError, setLocalError] = useState<Error | null>(null);
+
   const publicClient = usePublicClient();
   const { address: userAddress } = useAccount();
+  const { data: walletClient } = useConnectorClient();
 
   return {
     deployB20: async (
@@ -38,26 +43,54 @@ export function useB20Factory() {
       params: `0x${string}`,
       initCalls: `0x${string}`[]
     ) => {
-      if (!publicClient) {
-        throw new Error("RPC client is not available. Please verify network connection.");
-      }
-      if (!userAddress) {
-        throw new Error("Wallet is not connected. Please connect your wallet.");
-      }
+      setLocalError(null);
+      setIsPending(true);
+      try {
+        if (!publicClient) {
+          throw new Error("RPC client is not available. Please verify network connection.");
+        }
+        if (!userAddress) {
+          throw new Error("Wallet is not connected. Please connect your wallet.");
+        }
+        if (!walletClient) {
+          throw new Error("Wallet client is not ready. Please verify connection.");
+        }
 
-      const { request } = await publicClient.simulateContract({
-        address: B20_FACTORY_ADDRESS,
-        abi: B20_FACTORY_ABI,
-        functionName: 'createB20',
-        args: [variant, salt, params, initCalls],
-        account: userAddress
-      });
+        const { request } = await publicClient.simulateContract({
+          address: B20_FACTORY_ADDRESS,
+          abi: B20_FACTORY_ABI,
+          functionName: 'createB20',
+          args: [variant, salt, params, initCalls],
+          account: userAddress
+        });
 
-      const requestClone = appendBuilderSuffix(request);
-      return writeContractAsync(requestClone);
+        const requestClone = appendBuilderSuffix(request);
+
+        console.log("[Attribution Audit] deployB20 original request.data ending:", (request as any).data?.slice(-60));
+        console.log("[Attribution Audit] deployB20 requestClone.data ending:", (requestClone as any).data?.slice(-60));
+        console.log("[Attribution Audit] deployB20 ends with suffix:", (requestClone as any).data?.endsWith(BUILDER_CODE_SUFFIX));
+
+        const tx = await sendTransaction(walletClient as any, {
+          account: requestClone.account,
+          chain: walletClient.chain,
+          to: (requestClone as any).address,
+          data: (requestClone as any).data,
+          value: (requestClone as any).value,
+          gas: (requestClone as any).gas
+        });
+
+        setTxHash(tx);
+        return tx;
+      } catch (err: any) {
+        console.error("Simulation/execution failed for deployB20:", err);
+        setLocalError(err);
+        throw err;
+      } finally {
+        setIsPending(false);
+      }
     },
-    txHash: hash,
-    error,
+    txHash,
+    error: localError,
     isPending
   };
 }
@@ -205,12 +238,13 @@ export function useB20Details(tokenAddress?: `0x${string}`, userAddress?: `0x${s
  * Hook to write transactions directly to a B20 Token
  */
 export function useB20TokenActions(tokenAddress: `0x${string}`) {
-  const { writeContractAsync, data: hash, error: writeError, isPending: isWritePending } = useWriteContract();
-  const publicClient = usePublicClient();
-  const { address: userAddress } = useAccount();
-
+  const [txHash, setTxHash] = useState<`0x${string}` | undefined>(undefined);
   const [isSimulating, setIsSimulating] = useState(false);
   const [localError, setLocalError] = useState<Error | null>(null);
+
+  const publicClient = usePublicClient();
+  const { address: userAddress } = useAccount();
+  const { data: walletClient } = useConnectorClient();
 
   const writeAction = async (functionName: string, args: any[]) => {
     setLocalError(null);
@@ -222,6 +256,9 @@ export function useB20TokenActions(tokenAddress: `0x${string}`) {
       }
       if (!userAddress) {
         throw new Error("Wallet is not connected. Please connect your wallet.");
+      }
+      if (!walletClient) {
+        throw new Error("Wallet client is not ready. Please verify connection.");
       }
 
       // 1. Simulate contract call
@@ -235,7 +272,22 @@ export function useB20TokenActions(tokenAddress: `0x${string}`) {
 
       // 2. Write contract using simulated request cloned with builder suffix
       const requestClone = appendBuilderSuffix(request);
-      return await writeContractAsync(requestClone);
+
+      console.log(`[Attribution Audit] ${functionName} original request.data ending:`, (request as any).data?.slice(-60));
+      console.log(`[Attribution Audit] ${functionName} requestClone.data ending:`, (requestClone as any).data?.slice(-60));
+      console.log(`[Attribution Audit] ${functionName} ends with suffix:`, (requestClone as any).data?.endsWith(BUILDER_CODE_SUFFIX));
+
+      const tx = await sendTransaction(walletClient as any, {
+        account: requestClone.account,
+        chain: walletClient.chain,
+        to: (requestClone as any).address,
+        data: (requestClone as any).data,
+        value: (requestClone as any).value,
+        gas: (requestClone as any).gas
+      });
+
+      setTxHash(tx);
+      return tx;
     } catch (err: any) {
       console.error(`Simulation/execution failed for ${functionName}:`, err);
       setLocalError(err);
@@ -254,8 +306,8 @@ export function useB20TokenActions(tokenAddress: `0x${string}`) {
     revokeRole: async (role: string, account: string) => writeAction('revokeRole', [role, account]),
     renounceLastAdmin: async () => writeAction('renounceLastAdmin', []),
     updateSupplyCap: async (newCap: bigint) => writeAction('updateSupplyCap', [newCap]),
-    txHash: hash,
-    error: localError || writeError,
-    isPending: isSimulating || isWritePending
+    txHash,
+    error: localError,
+    isPending: isSimulating
   };
 }

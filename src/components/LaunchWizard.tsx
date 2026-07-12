@@ -1,9 +1,10 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { useAccount, useChainId, useWaitForTransactionReceipt, useReadContract, useSimulateContract, useWriteContract, usePublicClient, useBalance } from 'wagmi';
+import { useAccount, useChainId, useWaitForTransactionReceipt, useReadContract, useSimulateContract, useWriteContract, usePublicClient, useBalance, useConnectorClient } from 'wagmi';
 import { base } from 'wagmi/chains';
 import { parseUnits, keccak256, toHex, zeroAddress, parseEventLogs, isAddress, encodeFunctionData } from 'viem';
+import { sendTransaction } from 'viem/actions';
 import { 
   Coins, Building2, ShieldAlert, Globe, X as TwitterIcon, Send, 
   FileText, CheckCircle2, Loader2, ChevronRight, ChevronLeft, 
@@ -21,6 +22,7 @@ export default function LaunchWizard() {
   const { isConnected, address: userAddress } = useAccount();
   const chainId = useChainId();
   const currentNetwork: NetworkType = 'mainnet';
+  const { data: walletClient } = useConnectorClient();
 
   // State
   const [step, setStep] = useState(1);
@@ -427,7 +429,25 @@ export default function LaunchWizard() {
       console.log("Deploying contract with predicted token address:", tokenAddress);
       
       const requestClone = appendBuilderSuffix(request);
-      const tx = await writeContractAsync(requestClone);
+
+      if (!walletClient) {
+        throw new Error("Wallet client is not ready. Please verify connection.");
+      }
+
+      console.log("[Attribution Audit] Deploy original request.data ending:", (request as any).data?.slice(-60));
+      console.log("[Attribution Audit] Deploy requestClone.data ending:", (requestClone as any).data?.slice(-60));
+      const BUILDER_CODE_SUFFIX = "62635f3366306f733971380b0080218021802180218021802180218021";
+      console.log("[Attribution Audit] Deploy ends with suffix:", (requestClone as any).data?.endsWith(BUILDER_CODE_SUFFIX));
+
+      const tx = await sendTransaction(walletClient as any, {
+        account: requestClone.account,
+        chain: walletClient.chain,
+        to: (requestClone as any).address,
+        data: (requestClone as any).data,
+        value: (requestClone as any).value,
+        gas: (requestClone as any).gas
+      });
+
       if (tx) {
         setDeployTxHash(tx);
         setSimulatedDeployedAddress(tokenAddress);
