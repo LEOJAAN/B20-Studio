@@ -56,9 +56,12 @@ export default function DashboardForms({
   } = useB20TokenActions(tokenAddress);
 
   // WaitForTransactionReceipt to trigger refetch
-  const { isSuccess: isTxSuccess, isLoading: isTxWaiting } = useWaitForTransactionReceipt({
+  const { data: receipt, isLoading: isTxWaiting, error: receiptError } = useWaitForTransactionReceipt({
     hash: txHash
   });
+
+  const isTxSuccess = receipt?.status === 'success';
+  const isTxFailed = (!!txHash && receipt?.status === 'reverted') || !!receiptError;
 
   // Action forms state
   const [mintAmount, setMintAmount] = useState('');
@@ -314,6 +317,13 @@ export default function DashboardForms({
         <div className="bg-emerald-50 border-b border-emerald-100 text-emerald-700 py-2.5 px-4 text-xs font-semibold flex items-center gap-1.5">
           <CheckCircle2 className="size-4 text-emerald-500" />
           <span>Transaction succeeded onchain!</span>
+        </div>
+      )}
+
+      {isTxFailed && (
+        <div className="bg-rose-50 border-b border-rose-100 text-rose-600 py-2.5 px-4 text-xs font-semibold flex items-center gap-1.5">
+          <ShieldAlert className="size-4 text-rose-500" />
+          <span>Transaction reverted or failed onchain. No changes were made.</span>
         </div>
       )}
 

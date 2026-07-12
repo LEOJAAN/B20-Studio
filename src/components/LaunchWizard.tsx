@@ -91,6 +91,43 @@ export default function LaunchWizard() {
   const [rpcStatus, setRpcStatus] = useState<'Healthy' | 'Unavailable' | 'Pending'>('Pending');
   const [factoryStatus, setFactoryStatus] = useState<'Reachable' | 'Unavailable' | 'Pending'>('Pending');
 
+  // Timeout for receipt confirmation polling
+  const [isReceiptTimeout, setIsReceiptTimeout] = useState(false);
+
+  const handleTryAgain = () => {
+    setDeployTxHash(undefined);
+    setLocalDeployError(null);
+    setIsReceiptTimeout(false);
+    const newSalt = keccak256(toHex(Math.random().toString() + Date.now().toString()));
+    setSalt(newSalt);
+    setStep(3);
+  };
+
+  const handleStartNewToken = () => {
+    setName('');
+    setSymbol('');
+    setDecimals(18);
+    setInitialSupply('1000000000');
+    setSupplyCap('1000000000');
+    setComplianceNotes('');
+    setLogoPreview('');
+    setDescription('');
+    setWebsite('');
+    setTwitter('');
+    setTelegram('');
+    setStableIssuer('');
+    setSecurityIssuer('');
+    setCurrencyCode('USD');
+    setDeployTxHash(undefined);
+    setLocalDeployError(null);
+    setIsReceiptTimeout(false);
+    setSavedDeployedAddress(undefined);
+    setSimulatedDeployedAddress(undefined);
+    const newSalt = keccak256(toHex(Math.random().toString() + Date.now().toString()));
+    setSalt(newSalt);
+    setStep(1);
+  };
+
   const { data: balanceData } = useBalance({ address: userAddress });
 
   const isB20Enabled = process.env.NEXT_PUBLIC_B20_ENABLED === 'true';
@@ -230,6 +267,20 @@ export default function LaunchWizard() {
   } = useWaitForTransactionReceipt({
     hash: deployTxHash
   });
+
+  // Poll timeout trigger: 60 seconds
+  useEffect(() => {
+    if (deployTxHash && !receipt) {
+      setIsReceiptTimeout(false);
+      const timer = setTimeout(() => {
+        setIsReceiptTimeout(true);
+        console.warn("Polling deployment status timed out after 60 seconds.");
+      }, 60000);
+      return () => clearTimeout(timer);
+    } else {
+      setIsReceiptTimeout(false);
+    }
+  }, [deployTxHash, receipt]);
 
   // Save debug snapshot to localStorage for Developer Debug Panel
   useEffect(() => {
@@ -679,6 +730,17 @@ export default function LaunchWizard() {
     const baseUri = 'https://basescan.org';
     return `${baseUri}/${type}/${addressOrTx}`;
   };
+
+  // Mutually exclusive deployment states for Step 4
+  const isPendingWallet = step === 4 && !deployTxHash && !localDeployError;
+  const isPendingBlock = step === 4 && !!deployTxHash && !receipt && !localDeployError && !receiptError && !isReceiptTimeout;
+  const isFailed = step === 4 && (
+    !!localDeployError || 
+    !!receiptError || 
+    (!!receipt && receipt.status === 'reverted')
+  );
+  const isTimeout = step === 4 && !!deployTxHash && !receipt && !localDeployError && !receiptError && isReceiptTimeout;
+  const isSuccess = step === 5 || (step === 4 && !!receipt && receipt.status === 'success');
 
   return (
     <div className="w-full max-w-5xl mx-auto px-4 py-8">
@@ -1400,107 +1462,228 @@ export default function LaunchWizard() {
       {/* STEP 4: WALLET CONFIRMATION / LOADING RECEIPT */}
       {step === 4 && (
         <div className="max-w-md mx-auto bg-white border border-slate-200/80 rounded-2xl p-8 text-center space-y-6 shadow-sm animate-fadeIn">
-          <div className="relative flex justify-center">
-            <div className="size-20 rounded-full bg-blue-50 flex items-center justify-center text-blue-600 animate-pulse">
-              <Loader2 className="size-10 animate-spin" />
-            </div>
-          </div>
-          
-          <div className="space-y-2">
-            <h3 className="text-xl font-bold text-slate-900">Deploying B20 Precompile</h3>
-            <p className="text-sm text-slate-500 px-4">
-              {isWaitingForReceipt 
-                ? 'Your deployment transaction was sent. Waiting for block confirmation on Base...' 
-                : 'Confirm the transaction in your connected wallet. Do not close this page.'}
-            </p>
-          </div>
-
-          {deployTxHash && (
-            <div className="space-y-4">
-              <div className="text-xs bg-slate-50 border border-slate-200/50 rounded-xl p-3 font-mono break-all text-slate-600">
-                <span className="block text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-1">Transaction Hash</span>
-                {deployTxHash}
+          {/* 1. Pending Wallet Confirmation State */}
+          {isPendingWallet && (
+            <>
+              <div className="relative flex justify-center">
+                <div className="size-20 rounded-full bg-blue-50 flex items-center justify-center text-blue-600 animate-pulse">
+                  <Loader2 className="size-10 animate-spin" />
+                </div>
               </div>
-              <button
-                type="button"
-                onClick={() => {
-                  console.log("Manual refresh requested for deployment status");
-                  refetchReceipt();
-                }}
-                disabled={isWaitingForReceipt}
-                className="flex items-center justify-center gap-1.5 mx-auto bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold py-2 px-4 rounded-xl text-xs transition border border-slate-200 disabled:opacity-55"
-              >
-                <RefreshCw className="size-3.5" />
-                Refresh Deployment Status
-              </button>
-            </div>
+              <div className="space-y-2">
+                <h3 className="text-xl font-bold text-slate-900">Deploying B20 Precompile</h3>
+                <p className="text-sm text-slate-500 px-4">
+                  Confirm the transaction in your connected wallet. Do not close this page.
+                </p>
+              </div>
+            </>
           )}
 
-          {(deployError || localDeployError) && (() => {
-            const activeErr = localDeployError || deployError;
-            const isUserRejection = activeErr?.message?.toLowerCase().includes('user rejected') ||
-                                    activeErr?.message?.toLowerCase().includes('user denied') ||
-                                    activeErr?.code === 4001;
-            
-            const errorTitle = isUserRejection ? "Transaction Rejected" : "Deployment unavailable";
-            const errorDescription = isUserRejection 
-              ? "The transaction was rejected in your wallet. Please try again." 
-              : "The Base B20 deployment endpoint is currently unavailable. This usually means the B20 activation has not yet been enabled on Base Mainnet. Please wait for the official announcement and try again.";
-            
-            return (
-              <div className="text-xs bg-rose-50 border border-rose-200 text-rose-600 rounded-xl p-5 text-left space-y-3">
-                <p className="font-bold text-sm text-rose-800">{errorTitle}</p>
-                <p className="mt-1 text-rose-700 leading-relaxed">{errorDescription}</p>
-                
-                {/* Show Technical Details Accordion */}
-                <div className="mt-3 border-t border-rose-200/50 pt-2.5">
-                  <button
-                    type="button"
-                    onClick={() => setShowTechDetails(!showTechDetails)}
-                    className="flex items-center gap-1 font-bold text-[11px] text-rose-700 hover:text-rose-900 transition outline-none cursor-pointer"
-                  >
-                    <span>{showTechDetails ? '▼' : '▶'}</span> Show Technical Details
-                  </button>
-                  {showTechDetails && (
-                    <div className="mt-2 p-3 bg-white border border-rose-200/30 rounded-lg space-y-2 font-mono text-[10px] text-rose-800 break-all max-h-60 overflow-y-auto">
-                      <div>
-                        <span className="font-bold block text-rose-900 mb-0.5">revert signature:</span>
-                        <code className="bg-slate-50 px-1 py-0.5 rounded border border-slate-100">{errorDetails.revertSignature}</code>
-                      </div>
-                      <div>
-                        <span className="font-bold block text-rose-900 mb-0.5">raw error:</span>
-                        <code className="bg-slate-50 px-1 py-0.5 rounded border border-slate-100 block max-h-24 overflow-y-auto whitespace-pre-wrap">{errorDetails.rawError}</code>
-                      </div>
-                      <div>
-                        <span className="font-bold block text-rose-900 mb-0.5">calldata:</span>
-                        <code className="bg-slate-50 px-1 py-0.5 rounded border border-slate-100 block max-h-24 overflow-y-auto">{errorDetails.calldata}</code>
-                      </div>
-                      <div>
-                        <span className="font-bold block text-rose-900 mb-0.5">tx hash (if available):</span>
-                        <code className="bg-slate-50 px-1 py-0.5 rounded border border-slate-100">{errorDetails.txHash || 'Not available'}</code>
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                <div className="pt-2 flex justify-start">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setLocalDeployError(null);
-                      if (typeof resetDeploy === 'function') {
-                        resetDeploy();
-                      }
-                      setStep(3);
-                    }}
-                    className="bg-white hover:bg-rose-100 text-rose-600 border border-rose-200 font-bold py-1.5 px-4 rounded-xl text-[11px] transition cursor-pointer"
-                  >
-                    Go Back & Retry
-                  </button>
+          {/* 2. Pending Block Confirmation State */}
+          {isPendingBlock && (
+            <>
+              <div className="relative flex justify-center">
+                <div className="size-20 rounded-full bg-blue-50 flex items-center justify-center text-blue-600 animate-pulse">
+                  <Loader2 className="size-10 animate-spin" />
                 </div>
               </div>
-            );
-          })()}
+              <div className="space-y-2">
+                <h3 className="text-xl font-bold text-slate-900">Confirming Transaction</h3>
+                <p className="text-sm text-slate-500 px-4">
+                  Your deployment transaction was sent. Waiting for block confirmation on Base...
+                </p>
+              </div>
+              {deployTxHash && (
+                <div className="space-y-4">
+                  <div className="text-xs bg-slate-50 border border-slate-200/50 rounded-xl p-3 font-mono break-all text-slate-600 font-semibold">
+                    <span className="block text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-1">Transaction Hash</span>
+                    {deployTxHash}
+                  </div>
+                  <div className="flex gap-3 justify-center">
+                    <a
+                      href={getExplorerUrl(deployTxHash, 'tx')}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center gap-1 bg-white hover:bg-slate-50 text-slate-700 font-semibold py-1.5 px-3 rounded-xl text-xs transition border border-slate-200"
+                    >
+                      <ExternalLink className="size-3.5" />
+                      View on BaseScan
+                    </a>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        console.log("Manual refresh requested for deployment status");
+                        refetchReceipt();
+                      }}
+                      className="flex items-center gap-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold py-1.5 px-3 rounded-xl text-xs transition border border-slate-200"
+                    >
+                      <RefreshCw className={`size-3.5 ${isWaitingForReceipt ? 'animate-spin' : ''}`} />
+                      Refresh Status
+                    </button>
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+
+          {/* 3. Failed / Reverted State */}
+          {isFailed && (
+            <>
+              <div className="relative flex justify-center">
+                <div className="size-20 rounded-full bg-rose-50 flex items-center justify-center text-rose-600">
+                  <ShieldAlert className="size-10 text-rose-500" />
+                </div>
+              </div>
+              <div className="space-y-2">
+                <h3 className="text-xl font-bold text-rose-900">Deployment Failed</h3>
+                <p className="text-sm text-slate-500 px-4">
+                  The transaction reverted or failed. No B20 token was deployed.
+                </p>
+              </div>
+
+              {deployTxHash && (
+                <div className="space-y-3">
+                  <div className="text-xs bg-slate-50 border border-slate-200/50 rounded-xl p-3 font-mono break-all text-slate-600 text-left">
+                    <span className="block text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-1">Transaction Hash</span>
+                    {deployTxHash}
+                  </div>
+                  <div className="flex justify-center">
+                    <a
+                      href={getExplorerUrl(deployTxHash, 'tx')}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center gap-1 bg-white hover:bg-slate-50 text-slate-700 font-semibold py-1.5 px-3 rounded-xl text-xs transition border border-slate-200"
+                    >
+                      <ExternalLink className="size-3.5" />
+                      View on BaseScan
+                    </a>
+                  </div>
+                </div>
+              )}
+
+              {(() => {
+                const activeErr = localDeployError || deployError || receiptError;
+                const isUserRejection = activeErr?.message?.toLowerCase().includes('user rejected') ||
+                                        activeErr?.message?.toLowerCase().includes('user denied') ||
+                                        activeErr?.code === 4001;
+                
+                const errorTitle = isUserRejection ? "Transaction Rejected" : "Execution Error";
+                const errorDescription = isUserRejection 
+                  ? "The transaction was rejected in your wallet. Please try again." 
+                  : activeErr?.message || "The deployment transaction reverted on-chain. Please check your parameters.";
+                
+                return (
+                  <div className="text-xs bg-rose-50 border border-rose-200 text-rose-600 rounded-xl p-5 text-left space-y-3">
+                    <p className="font-bold text-sm text-rose-800">{errorTitle}</p>
+                    <p className="mt-1 text-rose-700 leading-relaxed">{errorDescription}</p>
+                    
+                    {/* Show Technical Details Accordion */}
+                    <div className="mt-3 border-t border-rose-200/50 pt-2.5">
+                      <button
+                        type="button"
+                        onClick={() => setShowTechDetails(!showTechDetails)}
+                        className="flex items-center gap-1 font-bold text-[11px] text-rose-700 hover:text-rose-900 transition outline-none cursor-pointer"
+                      >
+                        <span>{showTechDetails ? '▼' : '▶'}</span> Show Technical Details
+                      </button>
+                      {showTechDetails && (
+                        <div className="mt-2 p-3 bg-white border border-rose-200/30 rounded-lg space-y-2 font-mono text-[10px] text-rose-800 break-all max-h-60 overflow-y-auto">
+                          <div>
+                            <span className="font-bold block text-rose-900 mb-0.5">revert signature:</span>
+                            <code className="bg-slate-50 px-1 py-0.5 rounded border border-slate-100">{errorDetails.revertSignature || 'None'}</code>
+                          </div>
+                          <div>
+                            <span className="font-bold block text-rose-900 mb-0.5">raw error:</span>
+                            <code className="bg-slate-50 px-1 py-0.5 rounded border border-slate-100 block max-h-24 overflow-y-auto whitespace-pre-wrap">{errorDetails.rawError || String(activeErr)}</code>
+                          </div>
+                          <div>
+                            <span className="font-bold block text-rose-900 mb-0.5">calldata:</span>
+                            <code className="bg-slate-50 px-1 py-0.5 rounded border border-slate-100 block max-h-24 overflow-y-auto">{errorDetails.calldata || 'None'}</code>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })()}
+
+              <div className="pt-2 flex gap-3 justify-center">
+                <button
+                  type="button"
+                  onClick={handleTryAgain}
+                  className="bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 font-bold py-2 px-4 rounded-xl text-xs transition cursor-pointer"
+                >
+                  Go Back & Retry
+                </button>
+                <button
+                  type="button"
+                  onClick={handleStartNewToken}
+                  className="bg-rose-600 hover:bg-rose-700 text-white font-bold py-2 px-4 rounded-xl text-xs transition cursor-pointer"
+                >
+                  Start New Token
+                </button>
+              </div>
+            </>
+          )}
+
+          {/* 4. Timeout State */}
+          {isTimeout && (
+            <>
+              <div className="relative flex justify-center">
+                <div className="size-20 rounded-full bg-amber-50 flex items-center justify-center text-amber-600 animate-pulse">
+                  <ShieldAlert className="size-10 text-amber-500" />
+                </div>
+              </div>
+              <div className="space-y-2">
+                <h3 className="text-xl font-bold text-amber-900">Confirmation Timeout</h3>
+                <p className="text-sm text-slate-500 px-4">
+                  Transaction status could not be confirmed after 60 seconds. The transaction may still be pending on Base.
+                </p>
+              </div>
+
+              {deployTxHash && (
+                <div className="space-y-3">
+                  <div className="text-xs bg-slate-50 border border-slate-200/50 rounded-xl p-3 font-mono break-all text-slate-600 text-left">
+                    <span className="block text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-1">Transaction Hash</span>
+                    {deployTxHash}
+                  </div>
+                  <div className="flex gap-3 justify-center">
+                    <a
+                      href={getExplorerUrl(deployTxHash, 'tx')}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center gap-1 bg-white hover:bg-slate-50 text-slate-700 font-semibold py-1.5 px-3 rounded-xl text-xs transition border border-slate-200"
+                    >
+                      <ExternalLink className="size-3.5" />
+                      View on BaseScan
+                    </a>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        console.log("Manual refresh requested for deployment status after timeout");
+                        refetchReceipt();
+                      }}
+                      className="flex items-center gap-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold py-1.5 px-3 rounded-xl text-xs transition border border-slate-200"
+                    >
+                      <RefreshCw className={`size-3.5 ${isWaitingForReceipt ? 'animate-spin' : ''}`} />
+                      Refresh Status
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              <div className="pt-2 flex justify-center">
+                <button
+                  type="button"
+                  onClick={handleStartNewToken}
+                  className="bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 font-bold py-2 px-4 rounded-xl text-xs transition cursor-pointer"
+                >
+                  Start Over
+                </button>
+              </div>
+            </>
+          )}
+
           {/* Manual import fallback */}
           <div className="pt-6 border-t border-slate-100 text-left space-y-2.5">
             <h4 className="text-xs font-bold uppercase tracking-wider text-slate-700">Manual Import Fallback</h4>
