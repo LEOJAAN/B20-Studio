@@ -37,7 +37,10 @@ export const metadata: Metadata = {
   icons: {
     icon: "/favicon.ico",
   },
-  manifest: "/manifest.json"
+  manifest: "/manifest.json",
+  other: {
+    "base:app_id": "6a532e34d3aa253766470619",
+  },
 };
 
 export default function RootLayout({
