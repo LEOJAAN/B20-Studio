@@ -4,11 +4,32 @@ import { B20_FACTORY_ADDRESS, B20_FACTORY_ABI, B20_TOKEN_ABI, DEFAULT_ADMIN_ROLE
 import { B20Variant, NetworkType } from '../types';
 import { parseEventLogs, zeroAddress } from 'viem';
 
+export const BUILDER_CODE_SUFFIX = "62635f3366306f733971380b0080218021802180218021802180218021";
+
+/**
+ * Appends the Base Builder Code suffix to a transaction request object.
+ * Clones the request object to avoid mutation.
+ */
+export function appendBuilderSuffix<T>(request: T): T {
+  if (!request || typeof (request as any).data !== 'string' || !(request as any).data.startsWith('0x')) {
+    return request;
+  }
+  if ((request as any).data.endsWith(BUILDER_CODE_SUFFIX)) {
+    return request;
+  }
+  return {
+    ...request,
+    data: `${(request as any).data}${BUILDER_CODE_SUFFIX}` as `0x${string}`
+  };
+}
+
 /**
  * Hook to interact with the B20 Factory
  */
 export function useB20Factory() {
   const { writeContractAsync, data: hash, error, isPending } = useWriteContract();
+  const publicClient = usePublicClient();
+  const { address: userAddress } = useAccount();
 
   return {
     deployB20: async (
@@ -17,12 +38,23 @@ export function useB20Factory() {
       params: `0x${string}`,
       initCalls: `0x${string}`[]
     ) => {
-      return writeContractAsync({
+      if (!publicClient) {
+        throw new Error("RPC client is not available. Please verify network connection.");
+      }
+      if (!userAddress) {
+        throw new Error("Wallet is not connected. Please connect your wallet.");
+      }
+
+      const { request } = await publicClient.simulateContract({
         address: B20_FACTORY_ADDRESS,
         abi: B20_FACTORY_ABI,
         functionName: 'createB20',
-        args: [variant, salt, params, initCalls]
+        args: [variant, salt, params, initCalls],
+        account: userAddress
       });
+
+      const requestClone = appendBuilderSuffix(request);
+      return writeContractAsync(requestClone);
     },
     txHash: hash,
     error,
@@ -201,8 +233,9 @@ export function useB20TokenActions(tokenAddress: `0x${string}`) {
         account: userAddress
       });
 
-      // 2. Write contract using simulated request
-      return await writeContractAsync(request);
+      // 2. Write contract using simulated request cloned with builder suffix
+      const requestClone = appendBuilderSuffix(request);
+      return await writeContractAsync(requestClone);
     } catch (err: any) {
       console.error(`Simulation/execution failed for ${functionName}:`, err);
       setLocalError(err);

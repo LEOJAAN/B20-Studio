@@ -15,6 +15,7 @@ import {
 } from '../lib/b20Encoder';
 import { B20_FACTORY_ADDRESS, B20_FACTORY_ABI, MINT_ROLE, BURN_ROLE, PAUSE_ROLE, UNPAUSE_ROLE, METADATA_ROLE } from '../lib/b20Abi';
 import { B20Variant, NetworkType, TokenMetadata } from '../types';
+import { appendBuilderSuffix } from '../hooks/useB20';
 
 export default function LaunchWizard() {
   const { isConnected, address: userAddress } = useAccount();
@@ -425,7 +426,8 @@ export default function LaunchWizard() {
 
       console.log("Deploying contract with predicted token address:", tokenAddress);
       
-      const tx = await writeContractAsync(request);
+      const requestClone = appendBuilderSuffix(request);
+      const tx = await writeContractAsync(requestClone);
       if (tx) {
         setDeployTxHash(tx);
         setSimulatedDeployedAddress(tokenAddress);
