@@ -95,6 +95,7 @@ export default function LaunchWizard() {
   const [isReceiptTimeout, setIsReceiptTimeout] = useState(false);
 
   const handleTryAgain = () => {
+    localStorage.removeItem('b20_pending_deployment');
     setDeployTxHash(undefined);
     setLocalDeployError(null);
     setIsReceiptTimeout(false);
@@ -104,6 +105,7 @@ export default function LaunchWizard() {
   };
 
   const handleStartNewToken = () => {
+    localStorage.removeItem('b20_pending_deployment');
     setName('');
     setSymbol('');
     setDecimals(18);
