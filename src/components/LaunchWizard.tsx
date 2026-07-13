@@ -4,7 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { useAccount, useChainId, useWaitForTransactionReceipt, useReadContract, useSimulateContract, useWriteContract, usePublicClient, useBalance, useConnectorClient } from 'wagmi';
 import { base } from 'wagmi/chains';
 import { parseUnits, keccak256, toHex, zeroAddress, parseEventLogs, isAddress, encodeFunctionData } from 'viem';
-import { sendTransaction } from 'viem/actions';
+import { writeContract } from 'viem/actions';
 import { 
   Coins, Building2, ShieldAlert, Globe, X as TwitterIcon, Send, 
   FileText, CheckCircle2, Loader2, ChevronRight, ChevronLeft, 
@@ -16,7 +16,7 @@ import {
 } from '../lib/b20Encoder';
 import { B20_FACTORY_ADDRESS, B20_FACTORY_ABI, MINT_ROLE, BURN_ROLE, PAUSE_ROLE, UNPAUSE_ROLE, METADATA_ROLE } from '../lib/b20Abi';
 import { B20Variant, NetworkType, TokenMetadata } from '../types';
-import { appendBuilderSuffix } from '../hooks/useB20';
+
 
 export default function LaunchWizard() {
   const { isConnected, address: userAddress } = useAccount();
@@ -481,26 +481,11 @@ export default function LaunchWizard() {
 
       console.log("Deploying contract with predicted token address:", tokenAddress);
       
-      const requestClone = appendBuilderSuffix(request);
-
       if (!walletClient) {
         throw new Error("Wallet client is not ready. Please verify connection.");
       }
 
-      if (process.env.NODE_ENV !== 'production') {
-        console.log("[Attribution Audit] Deploy original request.data ending:", (request as any).data?.slice(-60));
-        console.log("[Attribution Audit] Deploy requestClone.data ending:", (requestClone as any).data?.slice(-60));
-        const BUILDER_CODE_SUFFIX = "62635f3366306f733971380b0080218021802180218021802180218021";
-        console.log("[Attribution Audit] Deploy ends with suffix:", (requestClone as any).data?.endsWith(BUILDER_CODE_SUFFIX));
-      }
-
-      const tx = await sendTransaction(walletClient as any, {
-        account: requestClone.account || userAddress!,
-        chain: walletClient.chain || base,
-        to: (requestClone as any).address,
-        data: (requestClone as any).data,
-        value: (requestClone as any).value
-      });
+      const tx = await writeContract(walletClient as any, request as any);
 
       if (tx) {
         setDeployTxHash(tx);

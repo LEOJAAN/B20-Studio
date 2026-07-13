@@ -3,27 +3,10 @@ import { useState } from 'react';
 import { B20_FACTORY_ADDRESS, B20_FACTORY_ABI, B20_TOKEN_ABI, DEFAULT_ADMIN_ROLE, MINT_ROLE, BURN_ROLE, PAUSE_ROLE, UNPAUSE_ROLE, METADATA_ROLE, OPERATOR_ROLE } from '../lib/b20Abi';
 import { B20Variant, NetworkType } from '../types';
 import { parseEventLogs, zeroAddress } from 'viem';
-import { sendTransaction } from 'viem/actions';
+import { writeContract } from 'viem/actions';
 import { base } from 'viem/chains';
 
-export const BUILDER_CODE_SUFFIX = "62635f3366306f733971380b0080218021802180218021802180218021";
 
-/**
- * Appends the Base Builder Code suffix to a transaction request object.
- * Clones the request object to avoid mutation.
- */
-export function appendBuilderSuffix<T>(request: T): T {
-  if (!request || typeof (request as any).data !== 'string' || !(request as any).data.startsWith('0x')) {
-    return request;
-  }
-  if ((request as any).data.endsWith(BUILDER_CODE_SUFFIX)) {
-    return request;
-  }
-  return {
-    ...request,
-    data: `${(request as any).data}${BUILDER_CODE_SUFFIX}` as `0x${string}`
-  };
-}
 
 /**
  * Hook to interact with the B20 Factory
@@ -65,21 +48,7 @@ export function useB20Factory() {
           account: userAddress
         });
 
-        const requestClone = appendBuilderSuffix(request);
-
-        if (process.env.NODE_ENV !== 'production') {
-          console.log("[Attribution Audit] deployB20 original request.data ending:", (request as any).data?.slice(-60));
-          console.log("[Attribution Audit] deployB20 requestClone.data ending:", (requestClone as any).data?.slice(-60));
-          console.log("[Attribution Audit] deployB20 ends with suffix:", (requestClone as any).data?.endsWith(BUILDER_CODE_SUFFIX));
-        }
-
-        const tx = await sendTransaction(walletClient as any, {
-          account: requestClone.account || userAddress!,
-          chain: walletClient.chain || base,
-          to: (requestClone as any).address,
-          data: (requestClone as any).data,
-          value: (requestClone as any).value
-        });
+        const tx = await writeContract(walletClient as any, request as any);
 
         setTxHash(tx);
         return tx;
@@ -272,22 +241,8 @@ export function useB20TokenActions(tokenAddress: `0x${string}`) {
         account: userAddress
       });
 
-      // 2. Write contract using simulated request cloned with builder suffix
-      const requestClone = appendBuilderSuffix(request);
-
-      if (process.env.NODE_ENV !== 'production') {
-        console.log(`[Attribution Audit] ${functionName} original request.data ending:`, (request as any).data?.slice(-60));
-        console.log(`[Attribution Audit] ${functionName} requestClone.data ending:`, (requestClone as any).data?.slice(-60));
-        console.log(`[Attribution Audit] ${functionName} ends with suffix:`, (requestClone as any).data?.endsWith(BUILDER_CODE_SUFFIX));
-      }
-
-      const tx = await sendTransaction(walletClient as any, {
-        account: requestClone.account || userAddress!,
-        chain: walletClient.chain || base,
-        to: (requestClone as any).address,
-        data: (requestClone as any).data,
-        value: (requestClone as any).value
-      });
+      // 2. Write contract using simulated request
+      const tx = await writeContract(walletClient as any, request as any);
 
       setTxHash(tx);
       return tx;

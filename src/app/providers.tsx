@@ -7,13 +7,18 @@ import { base } from 'wagmi/chains';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useState, ReactNode } from 'react';
 
+import { Attribution } from 'ox/erc8021';
+
 const projectId = process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID;
+
+const DATA_SUFFIX = Attribution.toDataSuffix({ codes: ['bc_3f0os9q8'] });
 
 const config = getDefaultConfig({
   appName: 'B20 Studio',
   projectId: projectId as string,
   chains: [base],
   ssr: true, // Enable Server Side Rendering support
+  dataSuffix: DATA_SUFFIX,
 });
 
 export function Providers({ children }: { children: ReactNode }) {
